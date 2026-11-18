@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.db
+*.db-*
+fixtures/
+.agent-foundry/
+.DS_Store
