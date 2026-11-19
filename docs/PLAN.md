@@ -32,6 +32,6 @@ The factory is one renderer; a plain table and a future 3D view are others.
 
 ## Status
 - [x] Monorepo, protocol, projector, core daemon (HTTP + WebSocket + spool), hook forwarder and installer, spike script. 16 tests.
-- [ ] M0 spike run on your machine
+- [x] M0 spike run on your machine (findings and gaps in docs/SPIKE.md)
 - [ ] Transcript tailer, table view (M1)
 - [ ] Factory port (M2)
