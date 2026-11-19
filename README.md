@@ -25,6 +25,7 @@ pnpm test
 pnpm dev:core          # starts the core; data lives in ~/.agent-foundry
 pnpm hooks:install     # forwards every Claude Code hook event to the core (backs up settings first)
 pnpm hooks:uninstall   # removes only what hooks:install added
+pnpm replay            # replays your recorded spool and transcripts through the core and checks the states (local data only)
 ```
 Then open http://127.0.0.1:7717 for the table view (`/state` has the raw JSON). Desktop-app sessions pick up the hooks
 right away; restart a CLI or VS Code session to load them. Until then, its status comes from its transcript.

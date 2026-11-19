@@ -72,7 +72,7 @@ export interface SessionState {
   hasTranscript: boolean;
   /**
    * Nothing real has happened yet: no prompt, no tool call, no transcript.
-   * Renderers hide pending sessions; one that ends while pending was a pre-warmed ghost and is dropped.
+   * Renderers hide pending sessions. One that ends while still pending was a pre-warmed ghost and stays hidden.
    */
   pending: boolean;
 }

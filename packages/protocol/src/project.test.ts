@@ -52,13 +52,25 @@ describe("projector", () => {
     expect(st.sessions.s4!.status).toBe("waiting");
   });
 
-  it("drops a pre-warmed ghost but keeps a session that did something", () => {
-    const st = replay([hook("SessionStart", {}, "g"), hook("SessionStart", {}, "real")], emptyState());
+  it("keeps a pre-warmed ghost hidden, and shows it as ended if its transcript turns up later", () => {
+    const st = replay([hook("SessionStart", { source: "resume" }, "g"), hook("SessionStart", {}, "real")], emptyState());
     expect(st.sessions.g!.pending).toBe(true);
     replay([hook("UserPromptSubmit", { prompt: "hi" }, "real"), hook("SessionEnd", {}, "g"), hook("SessionEnd", {}, "real")], st);
-    expect(st.sessions.g).toBeUndefined();
-    expect(st.sessions.real!.status).toBe("ended");
-    expect(st.sessions.real!.pending).toBe(false);
+    expect(st.sessions.g).toMatchObject({ pending: true, status: "ended" });
+    expect(st.sessions.real).toMatchObject({ pending: false, status: "ended" });
+    // The spool was drained before the tailer read g's (older) transcript: it was a real session that you closed.
+    const at = st.sessions.g!.lastHookAt!;
+    replay([{ seq: ++seq, kind: "foundry", ts: at, type: "transcript.observed", sessionId: "g", transcriptPath: "/t/g.jsonl", turn: "waiting", turnAt: at - 86_400_000 } as LoggedEvent], st);
+    expect(st.sessions.g).toMatchObject({ pending: false, status: "ended" });
+  });
+
+  it("doesn't take a message from another session for your prompt", () => {
+    const st = replay([
+      hook("UserPromptSubmit", { prompt: "Reorganize the repo" }, "m1"),
+      hook("Stop", {}, "m1"),
+      hook("UserPromptSubmit", { prompt: '<cross-session-message from="x">worker done</cross-session-message>' }, "m1"),
+    ], emptyState());
+    expect(st.sessions.m1).toMatchObject({ status: "working", lastPrompt: "Reorganize the repo", name: "Reorganize repo" });
   });
 
   it("puts a reopened session on your plate and a new one at idle", () => {

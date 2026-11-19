@@ -9,6 +9,7 @@
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "spike": "tsx tools/spike/spike.ts",
+    "replay": "FOUNDRY_REPLAY=1 pnpm --filter @foundry/core exec vitest run test/replay.test.ts",
     "hooks:install": "tsx packages/hook/src/cli.ts install",
     "hooks:uninstall": "tsx packages/hook/src/cli.ts uninstall"
   },

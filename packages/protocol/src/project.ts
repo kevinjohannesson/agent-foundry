@@ -25,6 +25,13 @@ export function transcriptTurnApplies(s: Pick<SessionState, "lastHookAt">, turnA
   return s.lastHookAt === null || turnAt > s.lastHookAt + HOOK_SLACK_MS;
 }
 
+/**
+ * A prompt that is one tagged block, like <cross-session-message …>…</cross-session-message> or <task-notification>,
+ * was sent by another session or the app, not typed by you. It still starts a turn, but it isn't your last prompt.
+ * (The transcript's last-prompt line skips these too.)
+ */
+export const isMachineMessage = (prompt: string) => /^\s*<([a-z][a-z0-9-]*)[\s>][\s\S]*<\/\1>\s*$/.test(prompt);
+
 /** Notification types that don't need you. */
 const BENIGN_NOTIFICATIONS = new Set(["auth_success"]);
 
@@ -80,6 +87,12 @@ function endTurnAgents(s: SessionState) {
   for (const a of Object.values(s.agents)) if (!a.background) a.running = false;
 }
 
+/** A hook event says what the status is; even when it only confirms what the transcript said first, hooks now own it. */
+function hookStatus(s: SessionState, status: SessionState["status"]) {
+  s.status = status;
+  s.statusFrom = "hooks";
+}
+
 const str = (v: unknown) => (typeof v === "string" && v ? v : null);
 
 function applyHook(state: FoundryState, p: HookPayload, ts: number) {
@@ -92,16 +105,15 @@ function applyHook(state: FoundryState, p: HookPayload, ts: number) {
   // Tool events inside a subagent carry its agent_id. They count, but they don't change the session's turn.
   const inAgent = p.agent_id ? s.agents[p.agent_id] : undefined;
   if (inAgent) inAgent.lastActivityAt = ts;
-  const before = s.status;
   switch (p.hook_event_name) {
     case "SessionStart":
       // Reopening a session (the desktop app always resumes) puts it back on your plate; a new one waits for its first prompt.
-      if (s.status === "ended" || s.status === "idle") s.status = p.source === "resume" ? "waiting" : "idle";
+      if (s.status === "ended" || s.status === "idle") hookStatus(s, p.source === "resume" ? "waiting" : "idle");
       break;
     case "UserPromptSubmit":
-      s.status = "working";
+      hookStatus(s, "working");
       s.notification = null;
-      if (p.prompt) {
+      if (p.prompt && !isMachineMessage(p.prompt)) {
         s.lastPrompt = p.prompt;
         setName(state, s, nameFromPrompt(p.prompt), "prompt");
       }
@@ -113,7 +125,7 @@ function applyHook(state: FoundryState, p: HookPayload, ts: number) {
     case "PreToolUse":
       s.toolCalls++;
       s.lastTool = p.tool_name ?? null;
-      if (!p.agent_id) { s.status = "working"; s.notification = null; }
+      if (!p.agent_id) { hookStatus(s, "working"); s.notification = null; }
       if (p.tool_name && SUBAGENT_TOOLS.has(p.tool_name) && !findAgent(s, null, p.tool_use_id)) {
         // A placeholder until the tailer links the agent's transcript by this tool_use_id.
         const input = (p.tool_input ?? {}) as Record<string, unknown>;
@@ -146,30 +158,30 @@ function applyHook(state: FoundryState, p: HookPayload, ts: number) {
     }
     case "Notification":
       if (p.notification_type && BENIGN_NOTIFICATIONS.has(p.notification_type)) break;
-      s.status = "needs_you";
+      hookStatus(s, "needs_you");
       s.notification = p.message ?? "Claude Code needs you";
       break;
     case "Stop":
-      s.status = "waiting";
+      hookStatus(s, "waiting");
       endTurnAgents(s);
       countAgents(s);
       break;
     case "StopFailure": // the turn ended on an API error instead of a Stop
-      s.status = "needs_you";
+      hookStatus(s, "needs_you");
       s.notification = `Turn failed: ${typeof p.error === "string" ? p.error : "API error"}`;
       endTurnAgents(s);
       countAgents(s);
       break;
     case "SessionEnd":
-      if (s.pending) { delete state.sessions[s.id]; return; } // a pre-warmed ghost: started and ended, nothing happened
-      s.status = "ended";
+      // A session still pending here is usually a pre-warmed ghost. It stays hidden rather than deleted: the tailer may
+      // not have read its transcript yet (the core was down, or the spool is being drained), and then it really ended.
+      hookStatus(s, "ended");
       for (const a of Object.values(s.agents)) a.running = false;
       countAgents(s);
       break;
     default:
       break; // SubagentStart, PermissionRequest/Denied, Pre/PostCompact, CwdChanged and future events: recorded, not projected yet
   }
-  if (s.status !== before || s.statusFrom === null) s.statusFrom = "hooks";
   updatePending(s);
 }
 

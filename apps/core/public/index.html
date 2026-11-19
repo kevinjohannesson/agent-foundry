@@ -107,7 +107,7 @@ function folder(cwd) {
 function draw() {
   queued = false;
   if (!state) return;
-  const all = Object.values(state.sessions).filter((s) => !s.pending);
+  const all = Object.values(state.sessions).filter((s) => !s.pending);  // pending: nothing happened yet, or a pre-warmed ghost
   const shown = all
     .filter((s) => ($("showArchived").checked || !s.archived) && ($("showEnded").checked || s.status !== "ended"))
     .sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status) || b.lastActivityAt - a.lastActivityAt);

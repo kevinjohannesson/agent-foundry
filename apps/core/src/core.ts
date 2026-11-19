@@ -20,7 +20,7 @@ type Listener = (ev: LoggedEvent, state: FoundryState) => void;
 export class Core {
   state: FoundryState = emptyState();
   private listeners = new Set<Listener>();
-  /** What each session's transcript said when last recorded (or what the state held when first seen). */
+  /** What each session's transcript said when last recorded; rebuilt from the log on start. */
   private transcriptSaid = new Map<string, TextFields>();
   private agentSaid = new Map<string, boolean>();
   private recentHooks = new Set<string>();
@@ -30,6 +30,13 @@ export class Core {
   }
 
   private remember(ev: StoredEvent) {
+    // What the transcripts said last, rebuilt from the log, so a restart doesn't record it again.
+    if (ev.kind === "foundry" && ev.type === "transcript.observed") {
+      const said = { ...this.transcriptSaid.get(ev.sessionId) };
+      for (const k of TEXT_FIELDS) if (ev[k] !== undefined) said[k] = ev[k];
+      this.transcriptSaid.set(ev.sessionId, said);
+    }
+    if (ev.kind === "foundry" && ev.type === "transcript.agent") this.agentSaid.set(ev.agentId, ev.running);
     if (ev.kind !== "hook") return;
     this.recentHooks.add(JSON.stringify([ev.ts, ev.payload]));
     if (this.recentHooks.size > RECENT_HOOKS) this.recentHooks.delete(this.recentHooks.values().next().value!);
@@ -72,8 +79,7 @@ export class Core {
   observeSession(o: SessionObservation): LoggedEvent | null {
     const s = this.state.sessions[o.sessionId];
     const known = s?.hasTranscript ?? false;
-    const said = this.transcriptSaid.get(o.sessionId)
-      ?? (known && s ? { transcriptPath: s.transcriptPath ?? undefined, entrypoint: s.entrypoint ?? undefined, title: s.title ?? undefined, cwd: s.cwd ?? undefined, lastPrompt: s.lastPrompt ?? undefined } : {});
+    const said = this.transcriptSaid.get(o.sessionId) ?? {};
     const changed: TextFields = {};
     for (const k of TEXT_FIELDS) if (o[k] !== undefined && o[k] !== said[k]) changed[k] = o[k];
     this.transcriptSaid.set(o.sessionId, { ...said, ...changed });

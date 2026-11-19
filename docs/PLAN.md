@@ -35,8 +35,12 @@ The factory is one renderer; a plain table and a future 3D view are others.
 - [x] M0 spike run on your machine (findings and gaps in docs/SPIKE.md)
 - [x] Transcript tailer and table view (M1 build). The table is at http://127.0.0.1:7717. Checked against this machine's
   transcripts with hooks off: 16 sessions from the last 24h, with app, title, workflow agents and transcript-derived status.
-- [ ] M1 replay: feed this machine's transcripts plus the 826 spooled spike hook events through the tailer and projector,
-  and check the resulting states in replay tests (no real transcript content in the repo)
+- [x] M1 replay (`pnpm replay`): the 826 spooled spike hook events and the transcripts written alongside them, replayed on a
+  simulated clock through the real tailer, core and projector (236 files, about 20 s). Checks: every event parses; state
+  stays consistent; ghosts stay hidden; status matches the hooks unless the transcript is newer, and the transcript
+  otherwise; no flicker between the two; restart rebuilds the same state and records nothing. It found and fixed: ghosts
+  deleted before their transcript was read (a closed session came back as "your move"), "status from" stuck on transcript
+  after a Stop, and prompts injected by other sessions taking the place of yours. Local only; nothing from it is committed.
 - [ ] M1 live checklist, about 30–60 minutes: [docs/M1-CHECKLIST.md](M1-CHECKLIST.md)
 - Passive soak, after M1: hooks stay installed during normal work. A wrong state becomes a bug to fix; M1 doesn't wait on it.
 - [ ] Factory port (M2)
