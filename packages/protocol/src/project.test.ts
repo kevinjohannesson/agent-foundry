@@ -47,6 +47,106 @@ describe("projector", () => {
     expect(st.sessions.s3!.notification).toBe("Turn failed: rate_limit");
   });
 
+  it("ignores benign notifications", () => {
+    const st = replay([hook("UserPromptSubmit", { prompt: "go" }, "s4"), hook("Stop", {}, "s4"), hook("Notification", { notification_type: "auth_success", message: "Signed in" }, "s4")], emptyState());
+    expect(st.sessions.s4!.status).toBe("waiting");
+  });
+
+  it("drops a pre-warmed ghost but keeps a session that did something", () => {
+    const st = replay([hook("SessionStart", {}, "g"), hook("SessionStart", {}, "real")], emptyState());
+    expect(st.sessions.g!.pending).toBe(true);
+    replay([hook("UserPromptSubmit", { prompt: "hi" }, "real"), hook("SessionEnd", {}, "g"), hook("SessionEnd", {}, "real")], st);
+    expect(st.sessions.g).toBeUndefined();
+    expect(st.sessions.real!.status).toBe("ended");
+    expect(st.sessions.real!.pending).toBe(false);
+  });
+
+  it("puts a reopened session on your plate and a new one at idle", () => {
+    const st = replay([hook("SessionStart", { source: "resume" }, "r1"), hook("SessionStart", { source: "startup" }, "r2")], emptyState());
+    expect(st.sessions.r1!.status).toBe("waiting");
+    expect(st.sessions.r2!.status).toBe("idle");
+    expect(st.sessions.r1!.statusFrom).toBe("hooks");
+  });
+
+  it("doesn't let a subagent's tool calls reopen a finished turn", () => {
+    const st = replay([
+      hook("UserPromptSubmit", { prompt: "go" }, "s5"),
+      hook("PreToolUse", { tool_name: "Agent", tool_use_id: "toolu_bg", tool_input: { run_in_background: true, subagent_type: "Explore" } }, "s5"),
+      hook("PostToolUse", { tool_name: "Agent", tool_use_id: "toolu_bg" }, "s5"),
+      hook("Stop", {}, "s5"),
+      hook("PreToolUse", { tool_name: "Read", agent_id: "toolu_bg", agent_type: "Explore" }, "s5"),
+    ], emptyState());
+    const s = st.sessions.s5!;
+    expect(s.status).toBe("waiting");
+    expect(s.activeSubagents).toBe(1); // a background agent outlives the turn
+    expect(s.agents.toolu_bg!.type).toBe("Explore");
+  });
+});
+
+const tx = (sid: string, extra: Record<string, unknown>): LoggedEvent =>
+  ({ seq: ++seq, kind: "foundry", ts: seq * 1000, type: "transcript.observed", sessionId: sid, transcriptPath: `/t/${sid}.jsonl`, ...extra }) as LoggedEvent;
+const agent = (sid: string, extra: Record<string, unknown>): LoggedEvent =>
+  ({ seq: ++seq, kind: "foundry", ts: seq * 1000, type: "transcript.agent", sessionId: sid, agentType: "general-purpose", description: null,
+    toolUseId: null, workflowId: null, running: true, startedAt: 1, lastActivityAt: 2, ...extra }) as LoggedEvent;
+
+describe("projector with transcripts", () => {
+  it("backfills a session from its transcript alone", () => {
+    const st = replay([tx("t1", { entrypoint: "claude-vscode", title: "Vehicle status telemetry data flow", cwd: "/repo", lastPrompt: "trace it",
+      startedAt: 100, lastActivityAt: 500, turn: "waiting", turnAt: 500 })], emptyState());
+    const s = st.sessions.t1!;
+    expect(s).toMatchObject({ entrypoint: "claude-vscode", name: "Vehicle status telemetry", nameSource: "title", status: "waiting",
+      startedAt: 100, lastActivityAt: 500, hasTranscript: true, pending: false, lastHookAt: null });
+  });
+
+  it("names from the app title over the prompt, but never over a rename", () => {
+    const st = replay([hook("UserPromptSubmit", { prompt: "Fix the flaky login test" }, "n1")], emptyState());
+    expect(st.sessions.n1!.name).toBe("Fix flaky login");
+    replay([tx("n1", { title: "Login test flakiness" })], st);
+    expect(st.sessions.n1!.name).toBe("Login test flakiness");
+    replay([{ seq: ++seq, kind: "foundry", ts: 1, type: "session.renamed", sessionId: "n1", name: "Auth flake" } as LoggedEvent,
+      tx("n1", { title: "Something else" }), hook("UserPromptSubmit", { prompt: "now this", session_title: "Another" }, "n1")], st);
+    expect(st.sessions.n1!.name).toBe("Auth flake");
+    expect(st.sessions.n1!.title).toBe("Another");
+  });
+
+  it("lets a transcript turn override hook status only when it is newer than the last hook", () => {
+    const st = replay([hook("UserPromptSubmit", { prompt: "go" }, "h1")], emptyState());
+    const last = st.sessions.h1!.lastHookAt!;
+    replay([tx("h1", { turn: "waiting", turnAt: last + 1000 })], st);
+    expect(st.sessions.h1!.status).toBe("working"); // the Stop hook is on its way
+    replay([tx("h1", { turn: "waiting", turnAt: last + 60_000 })], st);
+    expect(st.sessions.h1!.status).toBe("waiting"); // hooks stopped arriving; the transcript knows better
+    expect(st.sessions.h1!.statusFrom).toBe("transcript");
+  });
+
+  it("links a subagent transcript to the Agent call that started it", () => {
+    const st = replay([
+      hook("UserPromptSubmit", { prompt: "go" }, "a1"),
+      hook("PreToolUse", { tool_name: "Agent", tool_use_id: "toolu_1", tool_input: { description: "Find it", subagent_type: "Explore" } }, "a1"),
+      agent("a1", { agentId: "abc", agentType: "Explore", description: "Find it", toolUseId: "toolu_1" }),
+      agent("a1", { agentId: "wf1", workflowId: "wf_9", running: true }),
+    ], emptyState());
+    const s = st.sessions.a1!;
+    expect(Object.keys(s.agents).sort()).toEqual(["abc", "wf1"]);
+    expect(s.activeSubagents).toBe(2);
+    replay([hook("PostToolUse", { tool_name: "Agent", tool_use_id: "toolu_1" }, "a1"), agent("a1", { agentId: "wf1", workflowId: "wf_9", running: false })], st);
+    expect(s.activeSubagents).toBe(0);
+    expect(s.subagentsTotal).toBe(2);
+  });
+
+  it("ignores internal SubagentStop events and stops typed ones", () => {
+    const st = replay([
+      hook("UserPromptSubmit", { prompt: "go" }, "a2"),
+      agent("a2", { agentId: "bg1", running: true }),
+      hook("SubagentStop", { agent_id: "bg1", agent_type: "" }, "a2"),
+    ], emptyState());
+    expect(st.sessions.a2!.agents.bg1!.running).toBe(true);
+    replay([hook("SubagentStop", { agent_id: "bg1", agent_type: "general-purpose" }, "a2")], st);
+    expect(st.sessions.a2!.agents.bg1!.running).toBe(false);
+  });
+});
+
+describe("monograms", () => {
   it("keeps monograms unique within a workstream", () => {
     const st = emptyState();
     replay([

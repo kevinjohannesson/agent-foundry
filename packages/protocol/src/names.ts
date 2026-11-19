@@ -24,6 +24,26 @@ export function nameFromPrompt(prompt: string, maxWords = 3, maxLen = 24): strin
   return out.charAt(0).toUpperCase() + out.slice(1);
 }
 
+/**
+ * A name from the app's title ("Agentic controller for dark factory" -> "Agentic controller").
+ * Titles are already written for people, so it keeps their words in order and only trims to fit.
+ */
+export function nameFromTitle(title: string, maxLen = 24): string {
+  const words = title
+    .split(/\s+/)
+    .filter((w) => /[\p{L}\p{N}]/u.test(w)) // drop emoji and lone separators like "·"
+    .map((w, i) => (i === 0 ? w.replace(/^[^\p{L}\p{N}]+/u, "") : w));
+  let out: string[] = [];
+  for (const w of words) {
+    if ([...out, w].join(" ").length > maxLen) break;
+    out.push(w);
+  }
+  if (out.length === 0 && words[0]) out = [words[0].slice(0, maxLen)];
+  while (out.length > 1 && STOP.has(out.at(-1)!.toLowerCase().replace(/[^\p{L}']/gu, ""))) out.pop();
+  const name = out.join(" ").replace(/[,:;·\-–—]+$/u, "");
+  return name || "Untitled";
+}
+
 /** Two letters: first letters of the first two words, or the first two letters of a single word. Avoids `taken`. */
 export function deriveMono(name: string, taken: Iterable<string> = []): string {
   const used = new Set([...taken].map((t) => t.toLowerCase()));

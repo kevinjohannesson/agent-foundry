@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { Hono } from "hono";
 import type { UpgradeWebSocket } from "hono/ws";
 import { HookPayload, Intent, type ServerMessage } from "@foundry/protocol";
@@ -5,6 +6,9 @@ import type { Core } from "./core";
 
 export function createApp(core: Core) {
   const app = new Hono();
+
+  /** The table view: a plain renderer of the state, no build step. Read per request so edits show on reload. */
+  app.get("/", async (c) => c.html(await readFile(new URL("../public/index.html", import.meta.url), "utf8")));
 
   app.get("/health", (c) => c.json({ ok: true, seq: core.state.seq }));
 

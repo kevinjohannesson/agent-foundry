@@ -1,8 +1,18 @@
 import { existsSync, readFileSync, renameSync } from "node:fs";
 import {
-  apply, emptyState, Intent, StoredEvent, type FoundryEvent, type FoundryState, type LoggedEvent,
+  apply, emptyState, Intent, StoredEvent, transcriptTurnApplies,
+  type FoundryEvent, type FoundryState, type LoggedEvent,
 } from "@foundry/protocol";
 import type { EventLog } from "./db";
+import type { AgentObservation, SessionObservation } from "./tailer";
+
+/** Transcript fields that only get recorded when the transcript changes them (hooks may word them differently). */
+const TEXT_FIELDS = ["transcriptPath", "entrypoint", "title", "cwd", "lastPrompt"] as const;
+type TextFields = Partial<Pick<SessionObservation, (typeof TEXT_FIELDS)[number]>>;
+/** A transcript-only session's activity is recorded at most this often, unless something else changed. */
+const ACTIVITY_STEP_MS = 60_000;
+/** How many recent hook events to remember, so a spooled copy of one that also arrived over HTTP isn't recorded twice. */
+const RECENT_HOOKS = 5000;
 
 type Listener = (ev: LoggedEvent, state: FoundryState) => void;
 
@@ -10,12 +20,23 @@ type Listener = (ev: LoggedEvent, state: FoundryState) => void;
 export class Core {
   state: FoundryState = emptyState();
   private listeners = new Set<Listener>();
+  /** What each session's transcript said when last recorded (or what the state held when first seen). */
+  private transcriptSaid = new Map<string, TextFields>();
+  private agentSaid = new Map<string, boolean>();
+  private recentHooks = new Set<string>();
 
   constructor(private log: EventLog) {
-    for (const ev of log.since(0)) apply(this.state, ev);
+    for (const ev of log.since(0)) { apply(this.state, ev); this.remember(ev); }
+  }
+
+  private remember(ev: StoredEvent) {
+    if (ev.kind !== "hook") return;
+    this.recentHooks.add(JSON.stringify([ev.ts, ev.payload]));
+    if (this.recentHooks.size > RECENT_HOOKS) this.recentHooks.delete(this.recentHooks.values().next().value!);
   }
 
   record(ev: StoredEvent): LoggedEvent {
+    this.remember(ev);
     const logged = this.log.append(ev);
     apply(this.state, logged);
     for (const l of this.listeners) l(logged, this.state);
@@ -35,9 +56,46 @@ export class Core {
       let json: unknown;
       try { json = JSON.parse(line); } catch { continue; } // a half-written line from a crash: skip it
       const parsed = StoredEvent.safeParse(json);
-      if (parsed.success) { this.record(parsed.data); n++; }
+      if (!parsed.success) continue;
+      // The forwarder spools when a request times out, which can happen after the core already recorded it.
+      if (parsed.data.kind === "hook" && this.recentHooks.has(JSON.stringify([parsed.data.ts, parsed.data.payload]))) continue;
+      this.record(parsed.data); n++;
     }
     return n;
+  }
+
+  /**
+   * Records what the tailer read from a session transcript, if it adds anything:
+   * a new session, a changed title/app/folder/prompt/path, a turn the hooks haven't reported, or a transcript-only
+   * session's activity moving on. Returns the recorded event, or null.
+   */
+  observeSession(o: SessionObservation): LoggedEvent | null {
+    const s = this.state.sessions[o.sessionId];
+    const known = s?.hasTranscript ?? false;
+    const said = this.transcriptSaid.get(o.sessionId)
+      ?? (known && s ? { transcriptPath: s.transcriptPath ?? undefined, entrypoint: s.entrypoint ?? undefined, title: s.title ?? undefined, cwd: s.cwd ?? undefined, lastPrompt: s.lastPrompt ?? undefined } : {});
+    const changed: TextFields = {};
+    for (const k of TEXT_FIELDS) if (o[k] !== undefined && o[k] !== said[k]) changed[k] = o[k];
+    this.transcriptSaid.set(o.sessionId, { ...said, ...changed });
+    const turnNews = !!s && o.turn !== undefined && o.turnAt !== undefined && s.status !== o.turn && transcriptTurnApplies(s, o.turnAt);
+    const activityNews = !!s && s.lastHookAt === null && (o.lastActivityAt ?? 0) > s.lastActivityAt + ACTIVITY_STEP_MS;
+    if (known && Object.keys(changed).length === 0 && !turnNews && !activityNews) return null;
+    const ev: FoundryEvent = {
+      kind: "foundry", ts: Date.now(), type: "transcript.observed", sessionId: o.sessionId, transcriptPath: o.transcriptPath,
+      ...(known ? changed : pickDefined(o, TEXT_FIELDS)),
+      startedAt: o.startedAt, lastActivityAt: o.lastActivityAt, turn: o.turn, turnAt: o.turnAt,
+    };
+    return this.record(dropUndefined(ev));
+  }
+
+  /** Records a subagent or workflow agent the tailer found, or a change in whether it is running. */
+  observeAgent(o: AgentObservation): LoggedEvent | null {
+    const s = this.state.sessions[o.sessionId];
+    const existing = s?.agents[o.agentId] ?? (o.toolUseId ? Object.values(s?.agents ?? {}).find((a) => a.toolUseId === o.toolUseId) : undefined);
+    const said = this.agentSaid.get(o.agentId) ?? existing?.running;
+    this.agentSaid.set(o.agentId, o.running);
+    if (existing && existing.id === o.agentId && said === o.running) return null;
+    return this.record({ kind: "foundry", ts: Date.now(), type: "transcript.agent", ...o });
   }
 
   /** Turn a renderer's intent into foundry events, or throw with a message the UI can show. */
@@ -77,4 +135,14 @@ export class Core {
     }
     return out.map((e) => this.record(e));
   }
+}
+
+function pickDefined<T extends object, K extends keyof T>(o: T, keys: readonly K[]): Partial<Pick<T, K>> {
+  const out: Partial<Pick<T, K>> = {};
+  for (const k of keys) if (o[k] !== undefined) out[k] = o[k];
+  return out;
+}
+
+function dropUndefined<T extends object>(o: T): T {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 }

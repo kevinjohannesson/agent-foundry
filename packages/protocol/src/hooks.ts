@@ -33,6 +33,8 @@ export const HookPayload = z
     cwd: z.string().optional(),
     permission_mode: z.string().optional(),
     prompt: z.string().optional(),
+    /** UserPromptSubmit in the desktop app: the session's title, the same as the transcript's custom-title. */
+    session_title: z.string().optional(),
     tool_name: z.string().optional(),
     tool_use_id: z.string().optional(),
     tool_input: z.unknown().optional(),

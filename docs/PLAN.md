@@ -23,7 +23,7 @@ The factory is one renderer; a plain table and a future 3D view are others.
 | | What | Done when |
 |---|---|---|
 | M0 Spike | `pnpm spike` + an hour of recorded hooks (docs/SPIKE.md) | We know the real event shapes for CLI, VS Code and desktop |
-| M1 Core, read-only | Daemon, hook forwarder, transcript tailer, projector, table view | A day of real sessions shows correct states |
+| M1 Core, read-only | Daemon, hook forwarder, transcript tailer, projector, table view | Replayed transcripts and spool show correct states, and a scripted live checklist passes |
 | M2 Factory on real data | Port the mockup to React + PixiJS; Unassigned lot; drag to assign; persisted layout | You'd rather look at this than the session list |
 | M3 Controllers | foundry-mcp, proposals into the inventory, placing launches a session, answers from the panel, messages, bots | One ticket from proposal to done, entirely in the game |
 | M4 Lifecycle | Chest, handoffs, restore, chains, manual/auto | A 3-ticket chain runs end to end |
@@ -33,5 +33,10 @@ The factory is one renderer; a plain table and a future 3D view are others.
 ## Status
 - [x] Monorepo, protocol, projector, core daemon (HTTP + WebSocket + spool), hook forwarder and installer, spike script. 16 tests.
 - [x] M0 spike run on your machine (findings and gaps in docs/SPIKE.md)
-- [ ] Transcript tailer, table view (M1)
+- [x] Transcript tailer and table view (M1 build). The table is at http://127.0.0.1:7717. Checked against this machine's
+  transcripts with hooks off: 16 sessions from the last 24h, with app, title, workflow agents and transcript-derived status.
+- [ ] M1 replay: feed this machine's transcripts plus the 826 spooled spike hook events through the tailer and projector,
+  and check the resulting states in replay tests (no real transcript content in the repo)
+- [ ] M1 live checklist, about 30–60 minutes: [docs/M1-CHECKLIST.md](M1-CHECKLIST.md)
+- Passive soak, after M1: hooks stay installed during normal work. A wrong state becomes a bug to fix; M1 doesn't wait on it.
 - [ ] Factory port (M2)

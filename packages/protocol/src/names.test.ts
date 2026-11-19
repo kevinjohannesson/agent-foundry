@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveMono, nameFromPrompt } from "./names";
+import { deriveMono, nameFromPrompt, nameFromTitle } from "./names";
 
 describe("nameFromPrompt", () => {
   it("drops filler words and keeps three", () => {
@@ -7,6 +7,19 @@ describe("nameFromPrompt", () => {
   });
   it("falls back for empty prompts", () => {
     expect(nameFromPrompt("   ")).toBe("Untitled");
+  });
+});
+
+describe("nameFromTitle", () => {
+  it("keeps the title's words in order and trims to fit", () => {
+    expect(nameFromTitle("Agentic controller for dark factory")).toBe("Agentic controller");
+    expect(nameFromTitle("btw: how do loras work?")).toBe("btw: how do loras work?");
+  });
+  it("drops emoji and separators", () => {
+    expect(nameFromTitle("🟣 M1 · transcript tailer and table view")).toBe("M1 transcript tailer");
+  });
+  it("cuts a single long word", () => {
+    expect(nameFromTitle("Supercalifragilisticexpialidocious")).toBe("Supercalifragilisticexpi");
   });
 });
 
