@@ -27,7 +27,7 @@ if (cmd === "install") {
   const env = flags.includes("--spool-only") ? "FOUNDRY_SPOOL_ONLY=1 " : "";
   write(withFoundryHooks(read(), `${env}node "${forwarder}"`));
   console.log(`Agent Foundry hooks added to ${settingsPath}${env ? " (spool only)" : ""}. A backup sits next to it.`);
-  console.log("New sessions pick this up when they start; running sessions keep their old settings.");
+  console.log("Running desktop-app sessions pick this up right away; restart a CLI or VS Code session if its events don't show up.");
 } else if (cmd === "uninstall") {
   write(withoutFoundryHooks(read()));
   console.log(`Agent Foundry hooks removed from ${settingsPath}. A backup sits next to it.`);

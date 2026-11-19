@@ -6,7 +6,7 @@ export type SessionStatus =
   | "idle" // started, no prompt yet
   | "working" // a turn is running
   | "waiting" // the turn ended; it's your move
-  | "needs_you" // Claude Code raised a notification (permission prompt or idle reminder)
+  | "needs_you" // Claude Code raised a notification (permission prompt or idle reminder), or the turn failed
   | "ended"; // the process ended
 
 export interface SessionState {

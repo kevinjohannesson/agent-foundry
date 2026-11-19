@@ -2,8 +2,19 @@
  * Adds or removes the Agent Foundry hook in a Claude Code settings.json.
  * Every entry we add carries the forwarder path, so removing them is exact and other hooks are untouched.
  */
-export const EVENTS_WITH_MATCHER = ["PreToolUse", "PostToolUse"] as const;
-export const EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop", "PreCompact", "SessionEnd"] as const;
+/** Events whose matcher filters on tool name; `*` matches every tool. The rest get no matcher, which matches everything. */
+export const EVENTS_WITH_MATCHER = ["PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest", "PermissionDenied"] as const;
+/**
+ * Every event the forwarder records. Keep in step with HookEventName in @foundry/protocol.
+ * Our hook prints nothing and decides nothing, so none of these changes how Claude Code behaves
+ * (a PermissionRequest hook without a decision leaves the normal prompt in place).
+ */
+export const EVENTS = [
+  "SessionStart", "UserPromptSubmit",
+  "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest", "PermissionDenied",
+  "Notification", "SubagentStart", "SubagentStop", "Stop", "StopFailure",
+  "PreCompact", "PostCompact", "CwdChanged", "SessionEnd",
+] as const;
 export const MARKER = "foundry-hook.mjs";
 
 type HookCmd = { type: "command"; command: string; timeout?: number };

@@ -34,6 +34,19 @@ describe("projector", () => {
     expect(st.sessions.s2!.notification).toBeNull();
   });
 
+  it("treats a failed turn as needing you, and a failed subagent call as finished", () => {
+    const st = replay([
+      hook("UserPromptSubmit", { prompt: "go" }, "s3"),
+      hook("PreToolUse", { tool_name: "Agent" }, "s3"),
+      hook("PostToolUseFailure", { tool_name: "Agent", error: "boom" }, "s3"),
+    ], emptyState());
+    expect(st.sessions.s3!.activeSubagents).toBe(0);
+    expect(st.sessions.s3!.status).toBe("working");
+    replay([hook("StopFailure", { error: "rate_limit" }, "s3")], st);
+    expect(st.sessions.s3!.status).toBe("needs_you");
+    expect(st.sessions.s3!.notification).toBe("Turn failed: rate_limit");
+  });
+
   it("keeps monograms unique within a workstream", () => {
     const st = emptyState();
     replay([

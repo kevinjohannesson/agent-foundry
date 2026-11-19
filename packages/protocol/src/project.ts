@@ -64,6 +64,7 @@ function applyHook(state: FoundryState, p: import("./hooks").HookPayload, ts: nu
       if (p.tool_name && SUBAGENT_TOOLS.has(p.tool_name)) { s.activeSubagents++; s.subagentsTotal++; }
       break;
     case "PostToolUse":
+    case "PostToolUseFailure": // a failed call gets this instead of PostToolUse
       if (p.tool_name && SUBAGENT_TOOLS.has(p.tool_name)) s.activeSubagents = Math.max(0, s.activeSubagents - 1);
       break;
     case "Notification":
@@ -74,12 +75,17 @@ function applyHook(state: FoundryState, p: import("./hooks").HookPayload, ts: nu
       s.status = "waiting";
       s.activeSubagents = 0;
       break;
+    case "StopFailure": // the turn ended on an API error instead of a Stop
+      s.status = "needs_you";
+      s.notification = `Turn failed: ${typeof p.error === "string" ? p.error : "API error"}`;
+      s.activeSubagents = 0;
+      break;
     case "SessionEnd":
       s.status = "ended";
       s.activeSubagents = 0;
       break;
     default:
-      break; // SubagentStop, PreCompact and future events: recorded, not projected yet
+      break; // SubagentStart/Stop, PermissionRequest/Denied, Pre/PostCompact, CwdChanged and future events: recorded, not projected yet
   }
 }
 
