@@ -39,6 +39,8 @@ export const FoundryEvent = z.discriminatedUnion("type", [
     lastActivityAt: z.number().optional(),
     turn: TranscriptTurn.optional(),
     turnAt: z.number().optional(),
+    /** The turn line is an interrupt (you pressed Esc). No hook ever reports one. */
+    interrupted: z.boolean().optional(),
   }),
   /** A subagent or workflow agent transcript, linked to its parent session. */
   z.object({
@@ -49,6 +51,8 @@ export const FoundryEvent = z.discriminatedUnion("type", [
     toolUseId: z.string().nullable(),
     workflowId: z.string().nullable(),
     running: z.boolean(),
+    /** Launched in the background: it runs on after the turn that started it ends. */
+    background: z.boolean().optional(),
     startedAt: z.number(),
     lastActivityAt: z.number(),
   }),

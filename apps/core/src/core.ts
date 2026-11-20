@@ -83,13 +83,13 @@ export class Core {
     const changed: TextFields = {};
     for (const k of TEXT_FIELDS) if (o[k] !== undefined && o[k] !== said[k]) changed[k] = o[k];
     this.transcriptSaid.set(o.sessionId, { ...said, ...changed });
-    const turnNews = !!s && o.turn !== undefined && o.turnAt !== undefined && s.status !== o.turn && transcriptTurnApplies(s, o.turnAt);
+    const turnNews = !!s && o.turn !== undefined && o.turnAt !== undefined && s.status !== o.turn && transcriptTurnApplies(s, o.turnAt, o.interrupted);
     const activityNews = !!s && s.lastHookAt === null && (o.lastActivityAt ?? 0) > s.lastActivityAt + ACTIVITY_STEP_MS;
     if (known && Object.keys(changed).length === 0 && !turnNews && !activityNews) return null;
     const ev: FoundryEvent = {
       kind: "foundry", ts: Date.now(), type: "transcript.observed", sessionId: o.sessionId, transcriptPath: o.transcriptPath,
       ...(known ? changed : pickDefined(o, TEXT_FIELDS)),
-      startedAt: o.startedAt, lastActivityAt: o.lastActivityAt, turn: o.turn, turnAt: o.turnAt,
+      startedAt: o.startedAt, lastActivityAt: o.lastActivityAt, turn: o.turn, turnAt: o.turnAt, interrupted: o.interrupted,
     };
     return this.record(dropUndefined(ev));
   }

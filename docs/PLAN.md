@@ -41,6 +41,7 @@ The factory is one renderer; a plain table and a future 3D view are others.
   otherwise; no flicker between the two; restart rebuilds the same state and records nothing. It found and fixed: ghosts
   deleted before their transcript was read (a closed session came back as "your move"), "status from" stuck on transcript
   after a Stop, and prompts injected by other sessions taking the place of yours. Local only; nothing from it is committed.
-- [ ] M1 live checklist, about 30–60 minutes: [docs/M1-CHECKLIST.md](M1-CHECKLIST.md)
+- [ ] M1 live checklist, about 30–60 minutes: [docs/M1-CHECKLIST.md](M1-CHECKLIST.md). First run 20 Nov: 3 misses (background
+  subagents, an early interrupt, a noisy Ctrl+C), all fixed and checked by replaying that run. Re-run checks 3 and 7 to finish M1.
 - Passive soak, after M1: hooks stay installed during normal work. A wrong state becomes a bug to fix; M1 doesn't wait on it.
 - [ ] Factory port (M2)

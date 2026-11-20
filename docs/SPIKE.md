@@ -83,6 +83,14 @@ One run: 97 sessions on disk, plus about 80 minutes of hooks from 14 sessions
 - **Notifications** carry `notification_type`. We saw `idle_prompt` (CLI only) and `auth_success`. Desktop and VS Code sent
   none, so for them "your move" has to come from Stop. There was no `permission_prompt`, because every event ran in `auto` mode.
 - **Hot reload:** running desktop sessions picked up the installed hooks immediately, despite what the installer says.
+- **Subagents run in the background** (seen in the M1 checklist, 20 Nov, desktop): the Agent call's PostToolUse returns at once
+  with `tool_response` `{isAsync: true, status: "async_launched", agentId}`, even without `run_in_background`. The turn
+  usually ends (Stop) while the subagent works, and it reports back as an `<agent-message from="…">` prompt. Stop and
+  SubagentStop list it in `background_tasks` (`{id: agentId, type: "subagent", status: "running"}`) until it ends; one stopped
+  early never sends its SubagentStop, and its `.meta.json` gets `stoppedByUser: true` instead of `finished`. The meta also has
+  `requestShape: "background"`.
+- **Interrupts:** pressing Esc writes `[Request interrupted by user]` to the transcript and sends no hook at all. An internal
+  agent's SubagentStop (empty `agent_type`) can still arrive a few seconds later.
 
 ### Gaps before M1
 - ~~The installer registered 9 of the 33 hook events.~~ It now also registers `SubagentStart`, `PostToolUseFailure`,

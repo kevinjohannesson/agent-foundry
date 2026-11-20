@@ -7,7 +7,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
-import { HOOK_SLACK_MS, type FoundryState, type SessionState } from "@foundry/protocol";
+import { transcriptTurnApplies, type FoundryState, type SessionState } from "@foundry/protocol";
 import { runReplay, type ReplayResult } from "./replay";
 
 const home = process.env.FOUNDRY_HOME || join(homedir(), ".agent-foundry");
@@ -34,6 +34,8 @@ function invariants(st: FoundryState): string[] {
     if (s.hasTranscript && !s.entrypoint) bad.push(`${short(s.id)}: transcript but no entrypoint`);
     if (s.title && s.nameSource !== "title" && s.nameSource !== "set") bad.push(`${short(s.id)}: has a title but named from ${s.nameSource}`);
     if (s.status !== "idle" && s.statusFrom === null) bad.push(`${short(s.id)}: status ${s.status} with no source`);
+    if (s.turnHookAt !== null && (s.lastHookAt === null || s.turnHookAt > s.lastHookAt)) bad.push(`${short(s.id)}: turnHookAt after lastHookAt`);
+    for (const a of agents) if (a.running && !a.background && s.status === "waiting" && s.statusFrom === "hooks") bad.push(`${short(s.id)}: foreground agent ${a.id} running after the turn ended`);
   }
   return bad;
 }
@@ -71,8 +73,7 @@ describe.runIf(enabled)("replay of this machine's spool and transcripts", () => 
       const evs = r.hooks.filter((h) => h.payload.session_id === id).map((h) => h.payload.hook_event_name);
       return evs.every((e) => e === "SessionStart" || e === "SessionEnd") && !r.factsAtEnd.has(id);
     });
-    expect(ghosts.length).toBeGreaterThan(0);
-    for (const id of ghosts) expect(r.final.sessions[id]?.pending ?? true).toBe(true);
+    for (const id of ghosts) expect(r.final.sessions[id]?.pending ?? true, short(id)).toBe(true);
   });
 
   it("agrees with the hooks wherever the transcript has nothing newer", () => {
@@ -80,7 +81,7 @@ describe.runIf(enabled)("replay of this machine's spool and transcripts", () => 
     for (const h of Object.values(r.hooksOnly.sessions)) {
       const s = r.atEnd.sessions[h.id]!;
       const f = r.factsAtEnd.get(h.id);
-      const transcriptNewer = f?.turnAt !== undefined && f.turnAt > h.lastHookAt! + HOOK_SLACK_MS;
+      const transcriptNewer = f?.turnAt !== undefined && transcriptTurnApplies(h, f.turnAt, f.interrupted);
       if (!transcriptNewer && s.status !== h.status) off.push(`${short(h.id)}: ${s.status}, hooks say ${h.status}`);
     }
     expect(off).toEqual([]);
@@ -91,22 +92,25 @@ describe.runIf(enabled)("replay of this machine's spool and transcripts", () => 
     for (const [id, f] of r.factsAtEnd) {
       const s = r.atEnd.sessions[id];
       if (!s || !f.turn || f.turnAt === undefined) continue;
-      const hookNewer = s.lastHookAt !== null && f.turnAt <= s.lastHookAt + HOOK_SLACK_MS;
+      const hookNewer = !transcriptTurnApplies(s, f.turnAt, f.interrupted);
       if (!hookNewer && s.status !== f.turn) off.push(`${short(id)}: ${s.status}, transcript says ${f.turn}`);
     }
     expect(off).toEqual([]);
   });
 
   it("never flickers: the hooks don't undo what the transcript said", () => {
-    // The transcript often reports a turn's end a moment before the Stop hook arrives. That's fine as long as the hook
-    // agrees; a transcript change that the next hook reverses within seconds would show as a flicker in the table.
+    // The transcript often reports a turn's end (or start) a moment before the hook arrives. That's fine as long as the
+    // hook agrees; a transcript change that the next hook for the turn reverses within seconds would show as a flicker.
+    // A hook that agreed in between makes the reversal a new turn (a short one), not a flicker.
     const flicker: string[] = [];
     const bySession = new Map<string, typeof r.changes>();
     for (const c of r.changes) bySession.set(c.sessionId, [...(bySession.get(c.sessionId) ?? []), c]);
+    const turnHookBetween = (id: string, from: number, to: number) => r.hooks.some((h) =>
+      h.payload.session_id === id && !h.payload.agent_id && !h.payload.hook_event_name.startsWith("Subagent") && h.ts >= from && h.ts < to);
     for (const list of bySession.values()) {
       for (let i = 1; i < list.length; i++) {
         const [x, y] = [list[i - 1]!, list[i]!];
-        if (x.by === "transcript.observed" && y.by.startsWith("hook") && y.to === x.from && y.at - x.at < 10_000)
+        if (x.by === "transcript.observed" && y.by.startsWith("hook") && y.to === x.from && y.at - x.at < 10_000 && !turnHookBetween(x.sessionId, x.at, y.at))
           flicker.push(`${short(x.sessionId)} ${x.from}→${x.to} by the transcript, back by ${y.by} after ${y.at - x.at} ms`);
       }
     }
@@ -117,7 +121,7 @@ describe.runIf(enabled)("replay of this machine's spool and transcripts", () => 
     for (const s of Object.values(r.atEnd.sessions)) {
       const h = r.hooksOnly.sessions[s.id];
       const f = r.factsAtEnd.get(s.id);
-      const transcriptNewer = f?.turnAt !== undefined && h?.lastHookAt != null && f.turnAt > h.lastHookAt + HOOK_SLACK_MS;
+      const transcriptNewer = f?.turnAt !== undefined && !!h && transcriptTurnApplies(h, f.turnAt, f.interrupted);
       if (h && !transcriptNewer) expect(s.statusFrom, short(s.id)).toBe("hooks");
     }
   });

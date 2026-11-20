@@ -14,11 +14,13 @@ const projects = process.env.FOUNDRY_TRANSCRIPTS || join(process.env.CLAUDE_CONF
 const backfillHours = Number(process.env.FOUNDRY_BACKFILL_HOURS || 24);
 mkdirSync(home, { recursive: true });
 
-const core = new Core(new EventLog(join(home, "foundry.db")));
+const log = new EventLog(join(home, "foundry.db"));
+const core = new Core(log);
 const spool = join(home, "spool.jsonl");
 const drained = core.drainSpool(spool);
 // The forwarder also spools when the core is up but slow to answer; pick those up as they come.
-setInterval(() => core.drainSpool(spool), 2000);
+const spoolTimer = setInterval(() => core.drainSpool(spool), 2000);
+let stopTailer: (() => void) | undefined;
 
 const tailer = new Tailer({
   root: projects,
@@ -41,6 +43,22 @@ const server = serve({ fetch: app.fetch, port, hostname: "127.0.0.1" }, async (i
   await tailer.poll();
   const visible = Object.values(core.state.sessions).filter((s) => !s.pending).length;
   console.log(`${visible} sessions, ${drained} spooled events ingested, ${core.state.seq - before} transcript events from the last ${backfillHours}h.`);
-  tailer.start(1000);
+  if (!stopping) stopTailer = tailer.start(1000);
 });
 injectWebSocket(server);
+
+// Ctrl+C (or a kill): stop reading, close the log and exit cleanly. Hook events go to the spool until the next start.
+// The signal can arrive more than once (pnpm and tsx pass it on too), so only the first one counts.
+let stopping = false;
+const stop = () => {
+  if (stopping) return;
+  stopping = true;
+  stopTailer?.();
+  clearInterval(spoolTimer);
+  server.close();
+  log.close();
+  console.log("Agent Foundry core stopped.");
+  process.exit(0);
+};
+process.on("SIGINT", stop);
+process.on("SIGTERM", stop);

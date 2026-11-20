@@ -35,7 +35,9 @@ describe("readLine", () => {
     expect(facts(prompt(1, "go")).turn).toBe("working");
     expect(facts(prompt(1, "go"), reply(2, "tool_use")).turn).toBe("working");
     expect(facts(prompt(1, "go"), reply(2, "end_turn"))).toMatchObject({ turn: "waiting", turnAt: Date.parse(at(2)) });
-    expect(facts(prompt(1, "go"), prompt(2, "[Request interrupted by user for tool use]")).turn).toBe("waiting");
+    expect(facts(prompt(1, "go"), prompt(2, "[Request interrupted by user for tool use]"))).toMatchObject({ turn: "waiting", interrupted: true });
+    expect(facts(prompt(1, "go"), prompt(2, "[Request interrupted by user]"), prompt(3, "again"))).toMatchObject({ turn: "working", interrupted: false });
+    expect(facts(prompt(1, "go"), reply(2, "end_turn")).interrupted).toBe(false);
     expect(facts(prompt(1, "go"), reply(2, "end_turn"), { ...prompt(3, "side"), isSidechain: true }).turn).toBe("waiting");
     expect(facts(prompt(1, "<command-name>/model</command-name>"), prompt(2, "<local-command-stdout>Set model</local-command-stdout>")).turn).toBe("waiting");
   });
@@ -140,6 +142,23 @@ describe("Tailer", () => {
     await tailer.poll();
     expect(agents.at(-1)).toMatchObject({ agentId: "w2", running: false });
   });
+
+  it("reports a background agent, and one stopped before it finished as not running", async () => {
+    const { proj, tailer, agents } = setup();
+    writeFileSync(join(proj, `${SID}.jsonl`), jsonl(prompt(1, "go")));
+    const sub = join(proj, SID, "subagents");
+    mkdirSync(sub, { recursive: true });
+    const meta = { agentType: "general-purpose", description: "Catalog", toolUseId: "toolu_2", requestShape: "background" };
+    writeFileSync(join(sub, "agent-b1.jsonl"), jsonl(prompt(2, "catalog")));
+    writeFileSync(join(sub, "agent-b1.meta.json"), JSON.stringify(meta));
+    await tailer.poll();
+    expect(agents.at(-1)).toMatchObject({ agentId: "b1", running: true, background: true });
+
+    writeFileSync(join(sub, "agent-b1.meta.json"), JSON.stringify({ ...meta, stoppedByUser: true }));
+    appendFileSync(join(sub, "agent-b1.jsonl"), jsonl(prompt(3, "[Request interrupted by user for tool use]")));
+    await tailer.poll();
+    expect(agents.at(-1)).toMatchObject({ agentId: "b1", running: false });
+  });
 });
 
 describe("Core.observeSession", () => {
@@ -165,14 +184,24 @@ describe("Core.observeSession", () => {
     expect(core.state.sessions.t1!.status).toBe("waiting");
   });
 
+  it("records an interrupt right after a prompt, and an internal agent's hook doesn't hold it back", () => {
+    const core = new Core(new EventLog(":memory:"));
+    core.record({ kind: "hook", ts: 10_000, payload: { session_id: "t1", hook_event_name: "UserPromptSubmit", prompt: "list the files" } });
+    core.observeSession(obs({ turn: "working", turnAt: 10_000 }));
+    core.record({ kind: "hook", ts: 15_300, payload: { session_id: "t1", hook_event_name: "SubagentStop", agent_id: "int", agent_type: "" } });
+    const ev = core.observeSession(obs({ turn: "waiting", turnAt: 12_600, interrupted: true }));
+    expect(ev).toMatchObject({ type: "transcript.observed", turn: "waiting", interrupted: true });
+    expect(core.state.sessions.t1).toMatchObject({ status: "waiting", statusFrom: "transcript" });
+  });
+
   it("doesn't record anything again after a restart", () => {
     const dir = mkdtempSync(join(tmpdir(), "foundry-"));
     const a = new Core(new EventLog(join(dir, "f.db")));
     a.observeSession(obs());
-    a.observeAgent({ sessionId: "t1", agentId: "x", agentType: "Explore", description: null, toolUseId: null, workflowId: null, running: false, startedAt: 1, lastActivityAt: 2 });
+    a.observeAgent({ sessionId: "t1", agentId: "x", agentType: "Explore", description: null, toolUseId: null, workflowId: null, running: false, background: false, startedAt: 1, lastActivityAt: 2 });
     const b = new Core(new EventLog(join(dir, "f.db")));
     expect(b.observeSession(obs())).toBeNull();
-    expect(b.observeAgent({ sessionId: "t1", agentId: "x", agentType: "Explore", description: null, toolUseId: null, workflowId: null, running: false, startedAt: 1, lastActivityAt: 2 })).toBeNull();
+    expect(b.observeAgent({ sessionId: "t1", agentId: "x", agentType: "Explore", description: null, toolUseId: null, workflowId: null, running: false, background: false, startedAt: 1, lastActivityAt: 2 })).toBeNull();
   });
 });
 

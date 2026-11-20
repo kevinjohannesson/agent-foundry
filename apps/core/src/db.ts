@@ -14,8 +14,9 @@ export const events = sqliteTable("events", {
 
 export class EventLog {
   private db;
+  private sqlite;
   constructor(path: string) {
-    const sqlite = new Database(path);
+    const sqlite = (this.sqlite = new Database(path));
     sqlite.pragma("journal_mode = WAL");
     sqlite.exec(`CREATE TABLE IF NOT EXISTS events (
       seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,5 +33,9 @@ export class EventLog {
   since(seq = 0): LoggedEvent[] {
     return this.db.select().from(events).where(gt(events.seq, seq)).orderBy(asc(events.seq)).all()
       .map((r) => ({ ...(r.body as StoredEvent), seq: r.seq }) as LoggedEvent);
+  }
+  /** Closing the last connection folds the write-ahead log back into the database file. */
+  close() {
+    this.sqlite.close();
   }
 }

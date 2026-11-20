@@ -34,6 +34,8 @@ export interface SessionFacts {
   lastPrompt?: string;
   turn?: TranscriptTurn;
   turnAt?: number;
+  /** The turn line is an interrupt (you pressed Esc). */
+  interrupted?: boolean;
 }
 
 /** Desktop (and a CLI rename) writes custom-title and agent-name; VS Code and the CLI write ai-title. */
@@ -49,7 +51,7 @@ function textOf(content: unknown): string {
 }
 
 /** The turn a main-thread line implies, or undefined if it says nothing about the turn. */
-function turnOf(o: Record<string, any>): TranscriptTurn | undefined {
+function turnOf(o: Record<string, any>): TranscriptTurn | "interrupted" | undefined {
   if (o.isSidechain || o.isMeta || o.isCompactSummary) return undefined;
   if (o.type === "assistant") {
     if (o.isApiErrorMessage) return "waiting";
@@ -57,7 +59,7 @@ function turnOf(o: Record<string, any>): TranscriptTurn | undefined {
   }
   if (o.type === "user") {
     const text = textOf(o.message?.content).trimStart();
-    if (text.startsWith("[Request interrupted")) return "waiting"; // you pressed Esc
+    if (text.startsWith("[Request interrupted")) return "interrupted"; // you pressed Esc: waiting, and no hook follows
     if (text.startsWith("<local-command-stdout>") || text.startsWith("<local-command-stderr>")) return "waiting"; // a local slash command finished
     if (text.startsWith("<command-name>")) return undefined; // a slash command; the expanded prompt or its output follows
     return "working"; // a prompt or a tool result
@@ -85,5 +87,9 @@ export function readLine(f: SessionFacts, o: unknown): void {
     case "relocated": if (typeof l.relocatedCwd === "string" && l.relocatedCwd) f.cwd = l.relocatedCwd; return;
   }
   const turn = turnOf(l);
-  if (turn && !Number.isNaN(ts)) { f.turn = turn; f.turnAt = ts; }
+  if (turn && !Number.isNaN(ts)) {
+    f.turn = turn === "interrupted" ? "waiting" : turn;
+    f.turnAt = ts;
+    f.interrupted = turn === "interrupted";
+  }
 }

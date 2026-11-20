@@ -66,8 +66,13 @@ export interface SessionState {
   archived: { at: number; handoff: boolean } | null;
   startedAt: number;
   lastActivityAt: number;
-  /** When the last hook event arrived. A newer transcript line wins over hook status (hooks missing or stopped). */
+  /** When the last hook event arrived, of any kind. */
   lastHookAt: number | null;
+  /**
+   * When a hook last spoke for the session's own turn. Subagents' events and Claude Code's internal agents don't count.
+   * A transcript turn newer than this wins over the hook status (hooks missing or stopped, or an interrupt).
+   */
+  turnHookAt: number | null;
   /** The tailer has read this session's transcript. */
   hasTranscript: boolean;
   /**

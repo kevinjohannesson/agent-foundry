@@ -20,6 +20,7 @@ export interface SessionObservation {
   lastActivityAt?: number;
   turn?: TranscriptTurn;
   turnAt?: number;
+  interrupted?: boolean;
 }
 
 export interface AgentObservation {
@@ -30,6 +31,7 @@ export interface AgentObservation {
   toolUseId: string | null;
   workflowId: string | null;
   running: boolean;
+  background: boolean;
   startedAt: number;
   lastActivityAt: number;
 }
@@ -188,6 +190,7 @@ export class Tailer {
       sessionId, transcriptPath: path,
       entrypoint: facts.entrypoint, title: titleOf(facts), cwd: facts.cwd, lastPrompt: facts.lastPrompt,
       startedAt: facts.startedAt, lastActivityAt: facts.lastActivityAt, turn: facts.turn, turnAt: facts.turnAt,
+      interrupted: facts.interrupted || undefined,
     });
   }
 
@@ -216,7 +219,8 @@ export class Tailer {
       a.startedAt ||= st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs;
       a.lastActivityAt = st.mtimeMs;
       a.meta = (await readJson(a.path.slice(0, -".jsonl".length) + ".meta.json")) ?? a.meta;
-      let finished = a.meta.finished === true;
+      // `finished` once it reported back; `stoppedByUser` when it was stopped (TaskStop, or you) before that.
+      let finished = a.meta.finished === true || a.meta.stoppedByUser === true;
       if (a.workflowId) {
         let done = journals.get(a.workflowId);
         if (!done) { done = await finishedInJournal(join(wfRoot, a.workflowId, "journal.jsonl")); journals.set(a.workflowId, done); }
@@ -230,7 +234,8 @@ export class Tailer {
         agentType: typeof a.meta.agentType === "string" ? a.meta.agentType : "general-purpose",
         description: typeof a.meta.description === "string" ? a.meta.description : null,
         toolUseId: typeof a.meta.toolUseId === "string" ? a.meta.toolUseId : null,
-        workflowId: a.workflowId, running, startedAt: a.startedAt, lastActivityAt: st.mtimeMs,
+        workflowId: a.workflowId, running, background: a.meta.requestShape === "background",
+        startedAt: a.startedAt, lastActivityAt: st.mtimeMs,
       });
     }
   }

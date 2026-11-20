@@ -45,8 +45,9 @@ If it stays on Working: the spike saw no Notification events from the desktop ap
 
 ### 3. Subagent, then interrupt
 Ask for something that starts a subagent, for example "use a subagent to find where the WebSocket server is set up".
-- [ ] While the subagent runs: **Agents** 1 / 1 (hover it for the agent's type and description)
-- [ ] When it's done: 0 / 1
+- [ ] While the subagent runs: **Agents** 1 / 1 (hover it for the agent's type and description). Claude Code runs subagents
+  in the background, so the turn may end while it works: **Your move** with 1 / 1 is right.
+- [ ] When it reports back: **Working** while Claude reads the result, then 0 / 1
 
 Then give it a longer task and press Esc partway through.
 - [ ] Within a few seconds: **Your move**. Claude Code sends no Stop hook on an interrupt, so **Status from** may say transcript.
@@ -68,7 +69,8 @@ Exit the CLI session from check 4 with `/exit`. Close or archive one desktop ses
 
 ### 7. Restart the core mid-way
 1. Start a turn in any session that takes a while.
-2. Stop the core (Ctrl+C in its terminal) while the turn runs. Hook events now go to `~/.agent-foundry/spool.jsonl`.
+2. Stop the core (Ctrl+C in its terminal) while the turn runs. It prints "Agent Foundry core stopped." and nothing else.
+   Hook events now go to `~/.agent-foundry/spool.jsonl`.
 3. Let the turn finish, and send one more prompt somewhere.
 4. Start the core again with `pnpm dev:core`.
 - [ ] The startup line counts the spooled events it ingested
@@ -78,4 +80,14 @@ Exit the CLI session from check 4 with `/exit`. Close or archive one desktop ses
 ## Results
 Write one line per miss: the check, the session name, what the table showed, what you expected, and the time.
 
--
+First run, 20 Nov 2026, 00:36–01:03. Checks 1, 2, 4, 5 and 6 matched. Three misses, all fixed; checks 3 and 7 need a re-run.
+- **3, subagent** (WebSocket server setup, 00:45 and 00:48): **Agents** showed 1 / 1 for under a second. The Agent call now
+  returns at once (`async_launched`) and the subagent runs in the background; the projector took the return for the end.
+  Fixed: such agents count as background and run until SubagentStop, or until a Stop no longer lists them in
+  `background_tasks`. A subagent stopped early (`stoppedByUser` in its meta) counts as done.
+- **3, interrupt** (same session, 00:50): Esc 2.6 s after the prompt left it on **Working**. Transcript turns had to be 5 s
+  newer than the last hook, and an internal agent's SubagentStop at 00:50:23 counted as one. Fixed: an interrupt only has to
+  be newer than the last hook, since none ever follows it, and only hooks for the session's own turn count.
+- **7, Ctrl+C** (00:57): tsx printed "Previous process hasn't exited yet. Force killing..." and pnpm "Exit status 130".
+  The core never handled the signal, and pnpm passes Ctrl+C on to tsx a second time. Fixed: the core stops cleanly
+  (closes the log, exits 0), and `dev` uses Node's own `--watch`, which doesn't mind the second signal.

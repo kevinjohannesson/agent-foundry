@@ -28,7 +28,7 @@ export interface StatusChange {
   from: SessionStatus | "none";
   to: SessionStatus;
   by: string;
-  /** Time since the session's previous hook event, or null if it had none. */
+  /** Time since the session's previous hook event for its turn, or null if it had none. */
   sinceHookMs: number | null;
 }
 
@@ -59,16 +59,22 @@ interface TimedFile { rel: string; lines: Line[]; written: number }
 
 const NL = "\n";
 
-/** A file's complete lines with a time each: its own timestamp, or the one before it, kept non-decreasing. */
+/**
+ * A file's complete lines with a time each: its own timestamp, or the one before it, kept non-decreasing. Lines before
+ * the first timestamp (titles, queue operations) go with it, so a file doesn't appear before its session started.
+ */
 function timedLines(path: string): Line[] {
   const text = readFileSync(path, "utf8");
   const parts = text.split(NL);
   parts.pop(); // after the last newline: empty, or a line still being written
   let at = 0;
-  return parts.filter(Boolean).map((t) => {
+  const lines = parts.filter(Boolean).map((t) => {
     try { const ts = Date.parse(JSON.parse(t).timestamp); if (!Number.isNaN(ts)) at = Math.max(at, ts); } catch { /* keep time */ }
     return { at, text: t };
   });
+  const first = lines.find((l) => l.at > 0)?.at ?? statSync(path).mtimeMs;
+  for (const l of lines) if (l.at === 0) l.at = first;
+  return lines;
 }
 
 const list = (dir: string) => { try { return readdirSync(dir); } catch { return []; } };
@@ -140,10 +146,10 @@ export async function runReplay(opts: ReplayOptions): Promise<ReplayResult> {
     for (const f of files) write(f, upTo);
     for (const a of agentFiles) {
       write(a, upTo);
-      // The meta appears with the agent; `finished` only once its last line is written.
+      // The meta appears with the agent; `finished` (or `stoppedByUser`) only once its last line is written.
       const stage = a.written === 0 ? 0 : a.written < a.lines.length ? 1 : 2;
       if (stage !== a.metaStage && a.meta) {
-        const meta = stage === 2 ? a.meta : Object.fromEntries(Object.entries(a.meta).filter(([k]) => k !== "finished"));
+        const meta = stage === 2 ? a.meta : Object.fromEntries(Object.entries(a.meta).filter(([k]) => k !== "finished" && k !== "stoppedByUser"));
         writeFileSync(join(root, a.rel.slice(0, -".jsonl".length) + ".meta.json"), JSON.stringify(meta));
         a.metaStage = stage;
       }
@@ -170,7 +176,7 @@ export async function runReplay(opts: ReplayOptions): Promise<ReplayResult> {
       changes.push({ sessionId: id, at: now, from: before?.status ?? "none", to: s.status, by: ev.kind === "hook" ? `hook ${ev.payload.hook_event_name}` : ev.type,
         sinceHookMs: before?.hookAt != null ? now - before.hookAt : null });
     }
-    if (s) last.set(id, { status: s.status, hookAt: s.lastHookAt });
+    if (s) last.set(id, { status: s.status, hookAt: s.turnHookAt });
   });
 
   writeDue(now);

@@ -25,6 +25,24 @@ export const HookEventName = z.enum([
 ]);
 export type HookEventName = z.infer<typeof HookEventName>;
 
+/** One entry of `background_tasks`. For a subagent, `id` is its agent id. */
+export const BackgroundTask = z
+  .object({
+    id: z.string(),
+    type: z.string().optional(),
+    status: z.string().optional(),
+    description: z.string().optional(),
+    agent_type: z.string().optional(),
+  })
+  .passthrough();
+export type BackgroundTask = z.infer<typeof BackgroundTask>;
+
+/** The event's background tasks, or null if it doesn't list them (or lists them in a shape we don't know). */
+export function backgroundTasks(p: { background_tasks?: unknown }): BackgroundTask[] | null {
+  const parsed = z.array(BackgroundTask).safeParse(p.background_tasks);
+  return parsed.success ? parsed.data : null;
+}
+
 export const HookPayload = z
   .object({
     session_id: z.string(),
@@ -52,6 +70,11 @@ export const HookPayload = z
     stop_hook_active: z.boolean().optional(),
     old_cwd: z.string().optional(),
     new_cwd: z.string().optional(),
+    /**
+     * Stop and SubagentStop: the session's background tasks, including subagents, and whether each still runs.
+     * Kept loose so a change in its shape can't reject the whole event; read it with `backgroundTasks()`.
+     */
+    background_tasks: z.unknown().optional(),
   })
   .passthrough();
 export type HookPayload = z.infer<typeof HookPayload>;

@@ -123,7 +123,7 @@ describe("projector with transcripts", () => {
 
   it("lets a transcript turn override hook status only when it is newer than the last hook", () => {
     const st = replay([hook("UserPromptSubmit", { prompt: "go" }, "h1")], emptyState());
-    const last = st.sessions.h1!.lastHookAt!;
+    const last = st.sessions.h1!.turnHookAt!;
     replay([tx("h1", { turn: "waiting", turnAt: last + 1000 })], st);
     expect(st.sessions.h1!.status).toBe("working"); // the Stop hook is on its way
     replay([tx("h1", { turn: "waiting", turnAt: last + 60_000 })], st);
@@ -155,6 +155,69 @@ describe("projector with transcripts", () => {
     expect(st.sessions.a2!.agents.bg1!.running).toBe(true);
     replay([hook("SubagentStop", { agent_id: "bg1", agent_type: "general-purpose" }, "a2")], st);
     expect(st.sessions.a2!.agents.bg1!.running).toBe(false);
+  });
+
+  // Recorded in the M1 live checklist: the Agent call returns at once ("async_launched") and the turn ends while the
+  // subagent works on; it reports back later as an <agent-message> prompt.
+  const launch = (sid: string, toolUseId: string, agentId: string) => [
+    hook("PreToolUse", { tool_name: "Agent", tool_use_id: toolUseId, tool_input: { description: "Find it", subagent_type: "Explore" } }, sid),
+    hook("SubagentStart", { agent_id: agentId, agent_type: "Explore" }, sid),
+    hook("PostToolUse", { tool_name: "Agent", tool_use_id: toolUseId, tool_response: { isAsync: true, status: "async_launched", agentId } }, sid),
+  ];
+  const running = (agentId: string) => [{ id: agentId, type: "subagent", status: "running", description: "Find it", agent_type: "Explore" }];
+
+  it("keeps an async-launched subagent running past the end of the turn, until it reports", () => {
+    const st = replay([
+      hook("UserPromptSubmit", { prompt: "use a subagent to find it" }, "b1"),
+      ...launch("b1", "toolu_7", "ag7"),
+      hook("Stop", { background_tasks: running("ag7") }, "b1"),
+      hook("PreToolUse", { tool_name: "Bash", agent_id: "ag7", agent_type: "Explore" }, "b1"),
+      hook("SubagentStop", { agent_id: "int1", agent_type: "", background_tasks: running("ag7") }, "b1"),
+    ], emptyState());
+    const s = st.sessions.b1!;
+    expect(s).toMatchObject({ status: "waiting", activeSubagents: 1, subagentsTotal: 1 });
+    expect(s.agents.ag7).toMatchObject({ type: "Explore", description: "Find it", toolUseId: "toolu_7", background: true, running: true });
+    replay([
+      hook("SubagentStop", { agent_id: "ag7", agent_type: "Explore", background_tasks: running("ag7") }, "b1"),
+      hook("UserPromptSubmit", { prompt: '<agent-message from="ag7">found it</agent-message>' }, "b1"),
+    ], st);
+    expect(s).toMatchObject({ status: "working", activeSubagents: 0, subagentsTotal: 1, lastPrompt: "use a subagent to find it" });
+    // Its transcript turning up later links to the same agent, with nothing new to count.
+    replay([agent("b1", { agentId: "ag7", agentType: "Explore", toolUseId: "toolu_7", running: false, background: true })], st);
+    expect(s.subagentsTotal).toBe(1);
+  });
+
+  it("ends a background subagent that a Stop no longer lists, as when it was stopped before reporting", () => {
+    const st = replay([
+      hook("UserPromptSubmit", { prompt: "go" }, "b2"),
+      ...launch("b2", "toolu_8", "ag8"),
+      hook("Stop", { background_tasks: running("ag8") }, "b2"),
+      hook("UserPromptSubmit", { prompt: "can you abort it?" }, "b2"),
+      hook("Stop", { background_tasks: [] }, "b2"),
+    ], emptyState());
+    expect(st.sessions.b2).toMatchObject({ status: "waiting", activeSubagents: 0, subagentsTotal: 1 });
+  });
+
+  it("counts a background subagent it only learns of from a Stop", () => {
+    const st = replay([hook("UserPromptSubmit", { prompt: "go" }, "b3"), hook("Stop", { background_tasks: running("ag9") }, "b3")], emptyState());
+    expect(st.sessions.b3!.agents.ag9).toMatchObject({ type: "Explore", background: true, running: true });
+    // A background_tasks it can't read is left alone rather than rejecting the event.
+    replay([hook("Stop", { background_tasks: "?" }, "b3")], st);
+    expect(st.sessions.b3!.activeSubagents).toBe(1);
+  });
+
+  it("applies an interrupt at once, even right after a prompt, and ignores internal agents' hooks for the turn", () => {
+    const st = replay([hook("UserPromptSubmit", { prompt: "list the files" }, "i1")], emptyState());
+    const prompted = st.sessions.i1!.turnHookAt!;
+    // Claude Code's title agent finishes after the prompt: it says nothing about the turn.
+    replay([hook("SubagentStop", { agent_id: "int2", agent_type: "" }, "i1")], st);
+    expect(st.sessions.i1!.turnHookAt).toBe(prompted);
+    // An ordinary transcript line this close to the prompt waits for the hooks...
+    replay([tx("i1", { turn: "waiting", turnAt: prompted + 2600 })], st);
+    expect(st.sessions.i1!.status).toBe("working");
+    // ...but no hook ever follows an interrupt.
+    replay([tx("i1", { turn: "waiting", turnAt: prompted + 2600, interrupted: true })], st);
+    expect(st.sessions.i1).toMatchObject({ status: "waiting", statusFrom: "transcript" });
   });
 });
 
