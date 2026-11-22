@@ -31,6 +31,22 @@ The factory is one renderer; a plain table and a future 3D view are others.
   apart, a Project can be a workstream's controller and M3 shrinks to showing it. An API, or threads running locally by
   default, would push further that way.
 
+  **Test run (22 Nov).** A thread in a Claude Project started a read-only Remote Control run in the project's folder on this
+  machine, with one Explore subagent. It reached the factory's Unassigned lot, so hooks from such runs do arrive. Gaps:
+  - It can't be told apart yet: it reported `CLAUDE_CODE_ENTRYPOINT=claude-desktop`, the same as any desktop session.
+    Next, read that session's transcript (`acc912c0-…`) for anything project-specific, such as `bridge-session` lines.
+  - It showed as `New Session`, so it wrote no title line the tailer reads.
+  - It seemed to leave the factory within a minute or so. Check whether it turned grey or ghost hiding dropped it.
+  - Only the local run shows. The project's coordinator and its threads still run in the cloud and stay invisible.
+
+  The remote sessions API that Claude's own session tools use returns a session's title, status (working, blocked,
+  review ready, done, failed), a needs-action summary and, for a thread, its coordinator (`parent_session_id`). That maps
+  well onto a workstream with its controller, but it needs a claude.ai sign-in, and its account listing left out the
+  project's sessions. Not something to build on yet.
+
+  **Decision:** Agent Foundry is a playground with no deadline, so we don't change how Projects are used to make them show
+  here. Wait for Projects to run threads on this machine, then run this test again.
+
 ## Milestones
 | | What | Done when |
 |---|---|---|
@@ -77,4 +93,5 @@ The factory is one renderer; a plain table and a future 3D view are others.
     area, move and resize areas, pin, archive and restore, refusals, needs-you and bots (from posted hook events), phone
     width, and the same layout after a core restart.
 - [ ] M2 done when you'd rather look at the factory than the session list. Use it for a while and say what's missing.
-- [ ] Before M3: the Claude Projects test (see Decisions), then decide what a controller is
+- [x] Claude Projects test, first run 22 Nov (see Decisions): a local Remote Control run shows, but can't be told apart yet.
+- [ ] Before M3: re-run the Projects test once Projects run threads locally, then decide what a controller is
