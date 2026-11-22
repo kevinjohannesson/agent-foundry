@@ -40,6 +40,7 @@
   .mono { display: inline-block; min-width: 26px; text-align: center; font: 600 11px/18px ui-monospace, Menlo, monospace; background: var(--badge); border-radius: 4px; margin-right: 6px; }
   .name { font-weight: 500; white-space: nowrap; }
   .sub { color: var(--muted); font-size: 12px; margin-top: 2px; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sub.agent { max-width: 180px; }
   .folder { max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .now { min-width: 200px; max-width: 420px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .now.alert { color: var(--needs); }
@@ -118,7 +119,11 @@ function draw() {
 
   $("rows").replaceChildren(...shown.map((s) => {
     const agents = Object.values(s.agents);
-    const running = agents.filter((a) => a.running).map((a) => `${a.type}: ${a.description ?? ""}`).join("\n");
+    const live = agents.filter((a) => a.running);
+    const label = (a) => (a.description ? `${a.type} · ${a.description}` : a.type);
+    // Shown in the cell, not only as a tooltip: rows are rebuilt on every event, which cancels a tooltip while agents work.
+    const liveLine = live.length ? label(live[0]) + (live.length > 1 ? ` +${live.length - 1}` : "") : null;
+    const agentsTip = agents.map((a) => `${a.running ? "running" : "done"}  ${label(a)}`).join("\n");
     const alert = s.status === "needs_you" && s.notification;
     return el("tr", { className: s.status === "ended" ? "ended" : "" },
       el("td", {}, el("span", { className: `status s-${s.status}` }, el("span", { className: "dot" }), STATUS[s.status] ?? s.status)),
@@ -129,7 +134,9 @@ function draw() {
       el("td", {}, el("div", { className: "folder", textContent: folder(s.cwd), title: s.cwd ?? "" })),
       el("td", {}, el("div", { className: `now${alert ? " alert" : ""}`, textContent: alert ? s.notification : (s.lastPrompt ?? ""), title: alert ? s.notification : (s.lastPrompt ?? "") })),
       el("td", { className: "num" }, s.lastTool ?? "", s.toolCalls ? el("span", { className: "muted", textContent: ` ×${s.toolCalls}` }) : null),
-      el("td", { className: "num", title: running }, agents.length ? `${s.activeSubagents} / ${s.subagentsTotal}` : el("span", { className: "muted", textContent: "—" })),
+      el("td", { className: "num", title: agentsTip },
+        agents.length ? `${s.activeSubagents} / ${s.subagentsTotal}` : el("span", { className: "muted", textContent: "—" }),
+        liveLine ? el("div", { className: "sub agent", textContent: liveLine }) : null),
       el("td", { textContent: s.permissionMode ?? "—", className: s.permissionMode ? "" : "muted" }),
       el("td", { className: "num", textContent: ago(s.lastActivityAt), title: new Date(s.lastActivityAt).toLocaleString() }),
       el("td", { className: "muted", textContent: s.statusFrom ?? "—", title: s.lastHookAt ? `last hook event ${ago(s.lastHookAt)} ago` : "no hook events yet" }),

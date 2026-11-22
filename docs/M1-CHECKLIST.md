@@ -45,7 +45,7 @@ If it stays on Working: the spike saw no Notification events from the desktop ap
 
 ### 3. Subagent, then interrupt
 Ask for something that starts a subagent, for example "use a subagent to find where the WebSocket server is set up".
-- [ ] While the subagent runs: **Agents** 1 / 1 (hover it for the agent's type and description). Claude Code runs subagents
+- [ ] While the subagent runs: **Agents** 1 / 1, with the agent's type and description under it. Claude Code runs subagents
   in the background, so the turn may end while it works: **Your move** with 1 / 1 is right.
 - [ ] When it reports back: **Working** while Claude reads the result, then 0 / 1
 
@@ -91,3 +91,8 @@ First run, 20 Nov 2026, 00:36–01:03. Checks 1, 2, 4, 5 and 6 matched. Three mi
 - **7, Ctrl+C** (00:57): tsx printed "Previous process hasn't exited yet. Force killing..." and pnpm "Exit status 130".
   The core never handled the signal, and pnpm passes Ctrl+C on to tsx a second time. Fixed: the core stops cleanly
   (closes the log, exits 0), and `dev` uses Node's own `--watch`, which doesn't mind the second signal.
+
+Re-run of checks 3 and 7, 22 Nov 2026: both matched. **Agents** held 1 / 1 the whole time the subagent ran.
+- **3, hover:** the agent's details never showed on hover. The table redraws every row on each event, which cancels the
+  browser's tooltip while an agent is busy. Fixed: the running agent's type and description now show under the count, and
+  the tooltip lists every agent with whether it's running or done.
