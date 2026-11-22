@@ -1,7 +1,8 @@
 import type { LoggedEvent } from "./events";
 import { backgroundTasks, SUBAGENT_TOOLS, type BackgroundTask, type HookPayload } from "./hooks";
+import { areaIdOf, declaredArea, fits, LOT_ID } from "./layout";
 import { deriveMono, nameFromPrompt, nameFromTitle } from "./names";
-import type { AgentState, FoundryState, NameSource, SessionState } from "./state";
+import { HOTBAR_SLOTS, type AgentState, type FoundryState, type NameSource, type SessionState } from "./state";
 
 /**
  * The projector: (state, event) -> state. Pure, so the core, tests and a browser replay all agree.
@@ -257,20 +258,71 @@ function updatePending(s: SessionState) {
   s.pending = !s.hasTranscript && !s.lastPrompt && s.toolCalls === 0;
 }
 
+/** Gives a session a monogram no other session in its area has, if its own is taken there. */
+function keepMonoUnique(state: FoundryState, s: SessionState) {
+  if (takenMonos(state, s.workstreamId, s.id).some((m) => m.toLowerCase() === s.mono.toLowerCase()))
+    s.mono = deriveMono(s.name, takenMonos(state, s.workstreamId, s.id));
+}
+
+/** Sessions in an area that was moved or resized keep their spot if it still fits, and are packed again if not. */
+function unplaceOutside(state: FoundryState, areaId: string) {
+  const area = declaredArea(state, areaId);
+  if (!area) return;
+  for (const s of Object.values(state.sessions))
+    if (areaIdOf(s) === areaId && s.position && !fits(area, s.position.x, s.position.y)) s.position = null;
+}
+
 function applyFoundry(state: FoundryState, ev: Extract<LoggedEvent, { kind: "foundry" }>) {
   switch (ev.type) {
     case "workstream.created":
-      state.workstreams[ev.id] = { id: ev.id, name: ev.name, color: ev.color, area: ev.area };
+      state.workstreams[ev.id] = { id: ev.id, name: ev.name, color: ev.color, shape: ev.shape ?? "square", area: ev.area, link: null };
       break;
+    case "workstream.updated": {
+      const w = state.workstreams[ev.id]; if (!w) return;
+      if (ev.name !== undefined) w.name = ev.name;
+      if (ev.color !== undefined) w.color = ev.color;
+      if (ev.shape !== undefined) w.shape = ev.shape;
+      break;
+    }
+    case "workstream.removed": {
+      if (!state.workstreams[ev.id]) return;
+      delete state.workstreams[ev.id];
+      for (const s of Object.values(state.sessions)) {
+        if (s.workstreamId !== ev.id) continue;
+        s.workstreamId = null;
+        s.position = null;
+        keepMonoUnique(state, s);
+      }
+      break;
+    }
+    case "area.set": {
+      if (ev.areaId === LOT_ID) state.lot.area = ev.area;
+      else if (state.workstreams[ev.areaId]) state.workstreams[ev.areaId]!.area = ev.area;
+      else return;
+      unplaceOutside(state, ev.areaId);
+      break;
+    }
     case "session.assigned": {
       const s = state.sessions[ev.sessionId]; if (!s) return;
-      s.workstreamId = ev.workstreamId;
-      if (takenMonos(state, s.workstreamId, s.id).some((m) => m.toLowerCase() === s.mono.toLowerCase()))
-        s.mono = deriveMono(s.name, takenMonos(state, s.workstreamId, s.id));
+      const workstreamId = ev.workstreamId && state.workstreams[ev.workstreamId] ? ev.workstreamId : null;
+      // A position means a spot in the area it came from, so it doesn't carry over to another area.
+      if (ev.position) s.position = { x: ev.position.x, y: ev.position.y };
+      else if (workstreamId !== s.workstreamId) s.position = null;
+      s.workstreamId = workstreamId;
+      keepMonoUnique(state, s);
       break;
     }
     case "session.moved": {
       const s = state.sessions[ev.sessionId]; if (s) s.position = { x: ev.x, y: ev.y };
+      break;
+    }
+    case "pin.set": {
+      if (ev.slot < 0 || ev.slot >= HOTBAR_SLOTS) return;
+      if (ev.ref) for (let i = 0; i < state.pins.length; i++) {
+        const p = state.pins[i];
+        if (p && p.kind === ev.ref.kind && p.id === ev.ref.id) state.pins[i] = null;
+      }
+      state.pins[ev.slot] = ev.ref ? { kind: ev.ref.kind, id: ev.ref.id } : null;
       break;
     }
     case "session.renamed": {

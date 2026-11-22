@@ -49,6 +49,7 @@ export interface SessionState {
   mono: string;
   /** Tracker id if there is one. */
   ticket: string | null;
+  /** The workstream it belongs to; null puts it in the Unassigned lot. */
   workstreamId: string | null;
   status: SessionStatus;
   /** What last set the status: a hook event, or the transcript (when hooks aren't arriving for it). */
@@ -62,6 +63,10 @@ export interface SessionState {
   activeSubagents: number;
   subagentsTotal: number;
   agents: Record<string, AgentState>;
+  /**
+   * Where you put it, in tiles from the top-left of its area (its workstream, or the lot), so moving an area carries
+   * its sessions along. Null until you place it: renderers then pack it into the area's first free slot (see layout.ts).
+   */
   position: { x: number; y: number } | null;
   archived: { at: number; handoff: boolean } | null;
   startedAt: number;
@@ -82,17 +87,53 @@ export interface SessionState {
   pending: boolean;
 }
 
+/** A rectangle on the map, in tiles. */
+export interface Area {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** How a workstream's sessions and items are drawn, so areas can be told apart without colour. */
+export const SHAPES = ["square", "circle", "triangle", "hex"] as const;
+export type Shape = (typeof SHAPES)[number];
+
+/**
+ * Something outside the foundry a workstream stands for. Nothing sets it yet: it is here so a workstream can later be
+ * linked to a Claude Project (which may become its controller; decided before M3) without changing the state's shape.
+ */
+export interface WorkstreamLink {
+  kind: "claude-project";
+  url: string;
+}
+
 export interface Workstream {
   id: string;
   name: string;
   color: string;
-  area: { x: number; y: number; w: number; h: number };
+  shape: Shape;
+  area: Area;
+  link: WorkstreamLink | null;
 }
+
+/** What a hotbar slot holds. Sessions for now; proposals join in M3. */
+export type PinRef = { kind: "session"; id: string };
+export const HOTBAR_SLOTS = 10;
 
 export interface FoundryState {
   seq: number;
   sessions: Record<string, SessionState>;
   workstreams: Record<string, Workstream>;
+  /** The Unassigned lot: where sessions that belong to no workstream sit. */
+  lot: { area: Area };
+  /** The hotbar, one entry per slot (keys 1-9, then 0). */
+  pins: (PinRef | null)[];
 }
 
-export const emptyState = (): FoundryState => ({ seq: 0, sessions: {}, workstreams: {} });
+/** Where the lot starts out, before you move it. */
+export const DEFAULT_LOT_AREA: Area = { x: 0, y: 0, w: 21, h: 15 };
+
+export const emptyState = (): FoundryState => ({
+  seq: 0, sessions: {}, workstreams: {}, lot: { area: { ...DEFAULT_LOT_AREA } }, pins: Array(HOTBAR_SLOTS).fill(null),
+});

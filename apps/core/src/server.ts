@@ -1,14 +1,36 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { Hono } from "hono";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { serveStatic } from "@hono/node-server/serve-static";
+import { Hono, type MiddlewareHandler } from "hono";
 import type { UpgradeWebSocket } from "hono/ws";
 import { HookPayload, Intent, type ServerMessage } from "@foundry/protocol";
 import type { Core } from "./core";
 
-export function createApp(core: Core) {
+/** Where `pnpm build:factory` puts the factory. */
+const FACTORY_DIST = fileURLToPath(new URL("../../factory/dist", import.meta.url));
+
+const NOT_BUILT = `<!doctype html><meta charset="utf-8"><title>Agent Foundry</title>
+<body style="font:14px system-ui;padding:2rem;background:#14161a;color:#e9e5db">
+<p>The factory isn't built yet. Run <code>pnpm build:factory</code>, then reload. For development, <code>pnpm dev:factory</code>
+serves it with hot reload. The <a style="color:#f0b44a" href="/">table view</a> works without a build.</p>`;
+
+export function createApp(core: Core, opts: { factoryDir?: string } = {}) {
   const app = new Hono();
+  const factoryDir = opts.factoryDir ?? FACTORY_DIST;
 
   /** The table view: a plain renderer of the state, no build step. Read per request so edits show on reload. */
   app.get("/", async (c) => c.html(await readFile(new URL("../public/index.html", import.meta.url), "utf8")));
+
+  /** The factory view, as built by Vite. Checked per request, so building it while the core runs is enough. */
+  let factory: MiddlewareHandler | undefined;
+  app.get("/factory", (c) => c.redirect("/factory/"));
+  app.use("/factory/*", async (c, next) => {
+    if (!existsSync(join(factoryDir, "index.html"))) return c.html(NOT_BUILT, 503);
+    factory ??= serveStatic({ root: factoryDir, rewriteRequestPath: (p) => p.replace(/^\/factory/, "") });
+    return factory(c, next);
+  });
 
   app.get("/health", (c) => c.json({ ok: true, seq: core.state.seq }));
 

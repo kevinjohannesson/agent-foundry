@@ -24,6 +24,7 @@
   .summary { color: var(--muted); }
   .summary b { color: var(--text); font-weight: 600; }
   .controls { margin-left: auto; display: flex; gap: 14px; align-items: center; color: var(--muted); }
+  .factory { color: inherit; }
   .conn { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: var(--badge); }
   .conn.down { color: var(--needs); }
   main { padding: 0 16px 24px; overflow-x: auto; }
@@ -56,6 +57,7 @@
   <div class="controls">
     <label><input type="checkbox" id="showEnded"> Ended</label>
     <label><input type="checkbox" id="showArchived"> Archived</label>
+    <a href="/factory/" class="factory">Factory view</a>
     <span class="conn down" id="conn">connecting</span>
   </div>
 </header>

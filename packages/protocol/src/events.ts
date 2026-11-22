@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { HookPayload } from "./hooks";
+import { SHAPES } from "./state";
 
 /**
  * Everything the core knows is an append-only list of these.
@@ -16,10 +17,25 @@ export const HookEvent = z.object({
 export const TranscriptTurn = z.enum(["working", "waiting"]);
 export type TranscriptTurn = z.infer<typeof TranscriptTurn>;
 
+export const AreaSchema = z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() });
+export const ShapeSchema = z.enum(SHAPES);
+export const PinRefSchema = z.object({ kind: z.literal("session"), id: z.string() });
+const Position = z.object({ x: z.number(), y: z.number() });
+
 export const FoundryEvent = z.discriminatedUnion("type", [
-  z.object({ kind: z.literal("foundry"), ts: z.number(), type: z.literal("workstream.created"), id: z.string(), name: z.string(), color: z.string(), area: z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }) }),
-  z.object({ kind: z.literal("foundry"), ts: z.number(), type: z.literal("session.assigned"), sessionId: z.string(), workstreamId: z.string().nullable() }),
+  /** `shape` is missing from events written before M2; those workstreams are squares. */
+  z.object({ kind: z.literal("foundry"), ts: z.number(), type: z.literal("workstream.created"), id: z.string(), name: z.string(), color: z.string(), shape: ShapeSchema.optional(), area: AreaSchema }),
+  z.object({ kind: z.literal("foundry"), ts: z.number(), type: z.literal("workstream.updated"), id: z.string(), name: z.string().optional(), color: z.string().optional(), shape: ShapeSchema.optional() }),
+  /** Its sessions go back to the Unassigned lot. */
+  z.object({ kind: z.literal("foundry"), ts: z.number(), type: z.literal("workstream.removed"), id: z.string() }),
+  /** Moves or resizes the lot (`areaId` "unassigned") or a workstream. Sessions that no longer fit lose their position. */
+  z.object({ kind: z.literal("foundry"), ts: z.number(), type: z.literal("area.set"), areaId: z.string(), area: AreaSchema }),
+  /** Into a workstream, or back to the lot (null). With a position it lands there; without one it is packed. */
+  z.object({ kind: z.literal("foundry"), ts: z.number(), type: z.literal("session.assigned"), sessionId: z.string(), workstreamId: z.string().nullable(), position: Position.optional() }),
+  /** A new spot within the session's own area, relative to the area's top-left. */
   z.object({ kind: z.literal("foundry"), ts: z.number(), type: z.literal("session.moved"), sessionId: z.string(), x: z.number(), y: z.number() }),
+  /** Puts something in a hotbar slot, or empties it (null). Something already pinned elsewhere moves here. */
+  z.object({ kind: z.literal("foundry"), ts: z.number(), type: z.literal("pin.set"), slot: z.number().int(), ref: PinRefSchema.nullable() }),
   z.object({ kind: z.literal("foundry"), ts: z.number(), type: z.literal("session.renamed"), sessionId: z.string(), name: z.string(), mono: z.string().optional() }),
   z.object({ kind: z.literal("foundry"), ts: z.number(), type: z.literal("session.archived"), sessionId: z.string(), handoff: z.boolean() }),
   z.object({ kind: z.literal("foundry"), ts: z.number(), type: z.literal("session.restored"), sessionId: z.string() }),

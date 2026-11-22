@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, renameSync } from "node:fs";
 import {
-  apply, emptyState, Intent, StoredEvent, transcriptTurnApplies,
+  apply, areaIdOf, areaProblem, emptyState, freeArea, Intent, LOT_ID, placeProblem, SHAPES, StoredEvent, transcriptTurnApplies,
   type FoundryEvent, type FoundryState, type LoggedEvent,
 } from "@foundry/protocol";
 import type { EventLog } from "./db";
@@ -104,42 +104,73 @@ export class Core {
     return this.record({ kind: "foundry", ts: Date.now(), type: "transcript.agent", ...o });
   }
 
-  /** Turn a renderer's intent into foundry events, or throw with a message the UI can show. */
+  /** Turn a renderer's intent into foundry events, or throw with a message the UI can show. Nothing is recorded on a throw. */
   handle(intent: Intent): LoggedEvent[] {
     const ts = Date.now();
-    const need = (id: string) => { if (!this.state.sessions[id]) throw new Error(`No session ${id}`); };
+    const st = this.state;
+    const session = (id: string) => { const s = st.sessions[id]; if (!s) throw new Error(`No session ${id}`); return s; };
+    const workstream = (id: string) => { const w = st.workstreams[id]; if (!w) throw new Error(`No workstream ${id}`); return w; };
+    const check = (problem: string | null) => { if (problem) throw new Error(problem); };
     const out: FoundryEvent[] = [];
     switch (intent.type) {
-      case "assign":
-        need(intent.sessionId);
-        if (intent.workstreamId && !this.state.workstreams[intent.workstreamId]) throw new Error(`No workstream ${intent.workstreamId}`);
-        out.push({ kind: "foundry", ts, type: "session.assigned", sessionId: intent.sessionId, workstreamId: intent.workstreamId });
+      case "assign": {
+        session(intent.sessionId);
+        if (intent.workstreamId) workstream(intent.workstreamId);
+        const p = intent.position;
+        if (p) check(placeProblem(st, intent.workstreamId ?? LOT_ID, p.x, p.y, intent.sessionId));
+        out.push({ kind: "foundry", ts, type: "session.assigned", sessionId: intent.sessionId, workstreamId: intent.workstreamId, ...(p ? { position: p } : {}) });
         break;
-      case "move":
-        need(intent.sessionId);
-        out.push({ kind: "foundry", ts, type: "session.moved", sessionId: intent.sessionId, x: intent.x, y: intent.y });
+      }
+      case "move": {
+        const s = session(intent.sessionId);
+        check(placeProblem(st, areaIdOf(s), intent.x, intent.y, s.id));
+        out.push({ kind: "foundry", ts, type: "session.moved", sessionId: s.id, x: intent.x, y: intent.y });
         break;
+      }
       case "rename":
-        need(intent.sessionId);
+        session(intent.sessionId);
         out.push({ kind: "foundry", ts, type: "session.renamed", sessionId: intent.sessionId, name: intent.name, mono: intent.mono });
         break;
       case "archive":
-        need(intent.sessionId);
+        session(intent.sessionId);
         out.push({ kind: "foundry", ts, type: "session.archived", sessionId: intent.sessionId, handoff: intent.handoff });
         break;
       case "restore":
-        need(intent.sessionId);
+        session(intent.sessionId);
         out.push({ kind: "foundry", ts, type: "session.restored", sessionId: intent.sessionId });
         break;
       case "createWorkstream": {
         const base = intent.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "ws";
         let id = base, i = 2;
-        while (this.state.workstreams[id]) id = `${base}-${i++}`;
-        out.push({ kind: "foundry", ts, type: "workstream.created", id, name: intent.name, color: intent.color, area: intent.area });
+        while (st.workstreams[id] || id === LOT_ID) id = `${base}-${i++}`;
+        const area = intent.area ?? freeArea(st);
+        check(areaProblem(st, area));
+        const shape = intent.shape ?? SHAPES[Object.keys(st.workstreams).length % SHAPES.length]!;
+        out.push({ kind: "foundry", ts, type: "workstream.created", id, name: intent.name, color: intent.color, shape, area });
         break;
       }
+      case "updateWorkstream": {
+        workstream(intent.workstreamId);
+        const { name, color, shape } = intent;
+        if (name === undefined && color === undefined && shape === undefined) throw new Error("Nothing to change");
+        out.push({ kind: "foundry", ts, type: "workstream.updated", id: intent.workstreamId, name, color, shape });
+        break;
+      }
+      case "removeWorkstream":
+        workstream(intent.workstreamId);
+        out.push({ kind: "foundry", ts, type: "workstream.removed", id: intent.workstreamId });
+        break;
+      case "setArea":
+        if (intent.areaId !== LOT_ID) workstream(intent.areaId);
+        check(areaProblem(st, intent.area, intent.areaId));
+        out.push({ kind: "foundry", ts, type: "area.set", areaId: intent.areaId, area: intent.area });
+        break;
+      case "pin":
+        if (intent.ref) session(intent.ref.id);
+        out.push({ kind: "foundry", ts, type: "pin.set", slot: intent.slot, ref: intent.ref });
+        break;
     }
-    return out.map((e) => this.record(e));
+    return out.map((e) => this.record(dropUndefined(e)));
   }
 }
 
