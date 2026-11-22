@@ -57,5 +57,24 @@ The factory is one renderer; a plain table and a future 3D view are others.
   early interrupt, a noisy Ctrl+C), all fixed and checked by replaying that run. Re-run of checks 3 and 7 on 22 Nov passed;
   the agent's details now show in the table, since the tooltip couldn't survive the redraws. **M1 is done.**
 - Passive soak, after M1: hooks stay installed during normal work. A wrong state becomes a bug to fix; M1 doesn't wait on it.
-- [ ] Factory port (M2)
+- [x] M2 build (22 Nov): the factory view, `apps/factory` (Vite, React panels over a PixiJS map), served by the core at
+  http://127.0.0.1:7717/factory (`pnpm build:factory`; `pnpm dev:factory` for hot reload). The table stays at `/`.
+  - From the mockup: the map (pan, zoom, Fit), workstream areas with colour and shape, sessions as machines (spinning
+    while working, amber on your move, red when they need you, hollow when idle, grey when ended), running subagents and
+    workflow agents as bots, the overview, the inspector, alerts, the hotbar (pinned sessions, keys 1-0), tooltips, Alt
+    for titles, and the legend. New: the Unassigned lot, New workstream, moving and resizing areas, and a chest per area
+    (archive and restore; handoffs stay M4). Left for later: hubs, proposals, inventory, Auto, messages (M3); chains and
+    arrays (M4); belts, train, silo and the remote (v0.5).
+  - Protocol: workstreams have a shape and a `link` (null for now: a Claude Project can be linked later without changing
+    the state's shape). The lot (`state.lot`) and the hotbar (`state.pins`) are state. A session's position is relative
+    to its area, so moving an area carries its sessions; unplaced sessions are packed by `layout.ts`, which the core
+    (to check intents) and the factory (to draw) share. New events `workstream.updated`, `workstream.removed`,
+    `area.set` and `pin.set`; `session.assigned` can carry a spot. New intents `updateWorkstream`, `removeWorkstream`,
+    `setArea` and `pin`; `assign` takes a spot and `createWorkstream` finds room itself. The core refuses a spot outside
+    the area, one on top of another session, and areas closer than 2 tiles, with a message the factory shows.
+  - Checked: 78 tests (layout, projector, intents, a restart rebuilding the layout, the factory's drop and area plans)
+    plus the M1 replay. In the browser against a second core on this machine's transcripts: drag to assign, move within an
+    area, move and resize areas, pin, archive and restore, refusals, needs-you and bots (from posted hook events), phone
+    width, and the same layout after a core restart.
+- [ ] M2 done when you'd rather look at the factory than the session list. Use it for a while and say what's missing.
 - [ ] Before M3: the Claude Projects test (see Decisions), then decide what a controller is

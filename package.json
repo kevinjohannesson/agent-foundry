@@ -3,9 +3,13 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.28.0",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev:core": "pnpm --filter @foundry/core dev",
+    "dev:factory": "pnpm --filter @foundry/factory dev",
+    "build:factory": "pnpm --filter @foundry/factory build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "spike": "tsx tools/spike/spike.ts",
