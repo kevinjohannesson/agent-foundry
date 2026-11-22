@@ -12,12 +12,24 @@ The factory is one renderer; a plain table and a future 3D view are others.
   Sessions started elsewhere appear in an Unassigned lot; drag them into a workstream to assign them.
   It's fine if game-launched sessions don't show in the desktop app; they resume from the CLI.
 - **Controllers:** a controller is the main session of a workstream (the hub); sessions it proposes are its sub-sessions.
+  A Claude Project may take this role instead; see below. Decided before M3.
 - **Waiting on you:** foundry-launched sessions get MCP tools `ask(question, options)`, `done(summary)` and `message(to, text)`.
   For any other session a turn ending means "your move", and a Notification means "needs you".
 - **Identity:** every session has a short name and a two-letter monogram, unique per workstream. Ticket ids are optional metadata (Alt shows them).
   Controllers name what they propose; otherwise the first prompt names it until you rename it.
 - **Bots** are subagents (PreToolUse/PostToolUse on Task). **Layout, pins and areas** are core state, so placement survives restarts.
 - **Archive** is core state: nothing disappears unless you archive it. Handoffs are written to `.foundry/handoffs/`.
+- **Claude Projects (beta, noted 22 Nov):** one coordinator chat that starts worker threads with shared instructions and
+  memory, and an Overview of which threads need you ([docs](https://code.claude.com/docs/en/claude-projects)). It overlaps
+  our controllers (M3), lifecycle (M4) and PR belts (v0.5). We can't build on it yet:
+  - It has no API, and it isn't available in the CLI or VS Code.
+  - Cloud threads don't run local hooks or write local transcripts, so the core can't see them.
+  - Threads a project runs on this machine through Remote Control do fire our hooks.
+
+  M1 and M2 go ahead unchanged, with workstreams built so that one can later be linked to a Project. Before M3, run a test:
+  create a project, have it run one thread on this machine, and check what the core records. If project threads can be told
+  apart, a Project can be a workstream's controller and M3 shrinks to showing it. An API, or threads running locally by
+  default, would push further that way.
 
 ## Milestones
 | | What | Done when |
@@ -46,3 +58,4 @@ The factory is one renderer; a plain table and a future 3D view are others.
   the agent's details now show in the table, since the tooltip couldn't survive the redraws. **M1 is done.**
 - Passive soak, after M1: hooks stay installed during normal work. A wrong state becomes a bug to fix; M1 doesn't wait on it.
 - [ ] Factory port (M2)
+- [ ] Before M3: the Claude Projects test (see Decisions), then decide what a controller is
