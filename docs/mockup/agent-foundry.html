@@ -1,0 +1,1457 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!-- Agent Foundry mockup (v4). Source for the M2 port. Live copy: https://claude.ai/artifact/EwWyPRH6eNjjRuTvq8d9bt -->
+</head><body>
+<title>Agent Foundry</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: full-bleed map canvas, beveled tool windows pinned to the corners (overview TL, inspector TR, legend BL, alerts BR, hotbar bottom). Deliberately single dark theme. */
+:root{
+  --ground:#14161a; --panel:#2c2e33; --panel-deep:#1b1d21; --hi:#474b53; --lo:#0a0b0d;
+  --ink:#e9e5db; --muted:#9b978e; --head:#ffe3b3;
+  --amber:#f0b44a; --red:#ff5a4e; --green:#7bd88f;
+  --ds:#b38cff; --cui:#4fc3d9;
+  --f-head:"Chakra Petch","Segoe UI",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+[hidden]{display:none!important}
+html,body{height:100%;background:var(--ground);color:var(--ink);overflow:hidden;font-family:var(--f-body)}
+#app{position:fixed;inset:0;overflow:hidden;user-select:none;-webkit-user-select:none}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#cv.holding{cursor:crosshair}
+#cv.dragging{cursor:grabbing}
+
+.panel{position:absolute;background:var(--panel);box-shadow:inset 1px 1px 0 var(--hi),inset -1px -1px 0 var(--lo),0 4px 14px rgba(0,0,0,.5);padding:6px;border-radius:2px;font-size:13px}
+.ttl{display:flex;align-items:center;gap:8px;padding:1px 2px 6px;font-family:var(--f-head);font-weight:600;text-transform:uppercase;letter-spacing:.07em;font-size:13px;color:var(--head)}
+.ridge{flex:1;height:11px;min-width:12px;background:repeating-linear-gradient(180deg,var(--hi) 0 1px,var(--lo) 1px 2px,transparent 2px 4px);opacity:.75}
+.inset{background:var(--panel-deep);box-shadow:inset 1px 1px 0 var(--lo),inset -1px -1px 0 var(--hi);padding:8px}
+.xbtn{all:unset;cursor:pointer;width:20px;height:20px;display:grid;place-items:center;font-size:15px;color:var(--ink);background:linear-gradient(#4a4e56,#383b41);box-shadow:inset 1px 1px 0 #626770,inset -1px -1px 0 #16171a}
+.xbtn:hover{background:linear-gradient(#e86a5e,#c94a3f)}
+.btn{font-family:var(--f-head);font-weight:600;font-size:13px;letter-spacing:.03em;color:var(--ink);background:linear-gradient(#4a4e56,#3a3d43);border:0;border-radius:1px;box-shadow:inset 1px 1px 0 #626770,inset -1px -1px 0 #16171a,0 1px 0 #000;padding:6px 10px;cursor:pointer;line-height:1.2}
+.btn:hover{background:linear-gradient(#f6c871,#e0a23c);color:#1c1408}
+.btn.go{background:linear-gradient(#73c983,#47a058);color:#0b170e}
+.btn.go:hover{background:linear-gradient(#8fe09d,#5bb66b)}
+.btn.on{background:linear-gradient(#f6c871,#e0a23c);color:#1c1408}
+.btn:focus-visible,.xbtn:focus-visible,.slot:focus-visible,.ov-row:focus-visible,.al:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+.ic{width:16px;height:16px;flex:none;display:inline-block;vertical-align:-3px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+
+/* overview */
+#overview{top:max(12px,env(safe-area-inset-top,0px));left:max(12px,env(safe-area-inset-left,0px));width:300px}
+.ov-list{display:grid;gap:4px}
+.ov-row{all:unset;box-sizing:border-box;display:grid;grid-template-columns:1fr;gap:6px;padding:7px 8px;background:#24262b;box-shadow:inset 1px 1px 0 #34373d,inset -1px -1px 0 #121316;cursor:pointer;width:100%}
+.ov-row:hover{background:#2e3137}
+.ov-name{display:flex;align-items:center;gap:7px;font-family:var(--f-head);font-weight:600;font-size:13px;letter-spacing:.03em}
+.ov-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:3px}
+.st{display:flex;flex-direction:column;align-items:center;padding:3px 0 2px;background:var(--panel-deep);font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.jamtag{margin-left:auto;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#ffb3ab;background:#4a1d1a;box-shadow:inset 0 0 0 1px var(--red);padding:1px 6px}
+.st b{font-weight:500;font-size:14px;line-height:1.1}
+.st small{font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-family:var(--f-head)}
+.st.alert{background:#4a1d1a;box-shadow:inset 0 0 0 1px var(--red)}
+.st.alert b{color:#ffb3ab}
+.ov-train{display:flex;align-items:center;gap:7px;padding:6px 8px;font-family:var(--f-head);font-weight:600;font-size:13px}
+.ov-train .mono{margin-left:auto;font-family:var(--f-mono);font-weight:400;color:var(--amber)}
+.ctl{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+.ctl .btn{padding:4px 9px;font-size:12px}
+.ctl .sp{flex:1}
+#ovToggle{display:none}
+
+/* inspector */
+#entity{top:max(12px,env(safe-area-inset-top,0px));right:max(12px,env(safe-area-inset-right,0px));width:340px;max-height:calc(100% - 200px);display:flex;flex-direction:column}
+#entity .inset{overflow:auto;display:grid;gap:10px;min-height:0}
+.ent-head{display:flex;gap:10px;align-items:flex-start}
+.ent-head .ic{width:28px;height:28px}
+.ent-title{font-family:var(--f-head);font-weight:600;font-size:16px;line-height:1.2;text-wrap:balance}
+.ent-sub{color:var(--muted);font-size:12px;margin-top:2px}
+.state{display:inline-flex;align-items:center;gap:6px;font-family:var(--f-head);font-weight:600;font-size:12px;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;justify-self:start}
+.state.working{background:#1d3324;color:var(--green)}
+.state.needs{background:#4a1d1a;color:#ffb3ab}
+.state.done{background:#2a2c31;color:var(--muted)}
+.state.jam{background:#4a1d1a;color:#ffb3ab}
+.bar{height:14px;background:#0f1012;box-shadow:inset 1px 1px 0 #000,inset -1px -1px 0 #33363c;position:relative}
+.bar i{position:absolute;left:1px;top:1px;bottom:1px;background:linear-gradient(#8fe09d,#3f9a4f);width:0}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;font-family:var(--f-mono);font-variant-numeric:tabular-nums;text-align:right}
+.ask{background:#2a1a19;box-shadow:inset 0 0 0 1px #6b2b26;padding:10px;display:grid;gap:8px}
+.ask p{margin:0;line-height:1.45;font-size:13.5px}
+.ask .row{display:flex;gap:6px;flex-wrap:wrap}
+.log{margin:0;padding:0;list-style:none;font-family:var(--f-mono);font-size:11.5px;color:#bdb9af;display:grid;gap:3px}
+.log li::before{content:"› ";color:var(--muted)}
+.seg{display:flex;gap:0}
+.seg .btn{flex:1}
+.stepper{display:flex;align-items:center;gap:6px}
+.stepper b{font-family:var(--f-mono);font-weight:500;min-width:2ch;text-align:center}
+.log li.msg{color:#cfe3ff}
+.log li.you{color:var(--amber)}
+.log li.bad{color:#ffb3ab}
+.log li.row{display:flex;gap:8px;align-items:center}
+.log li.row::before{flex:none}
+.log li.row span{flex:1;min-width:0}
+.log li.row span.chip{flex:none}
+.log li.row span .muted,.log li.row span span{flex:none}
+.tag{font-family:var(--f-head);font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:0 5px;background:#3a3326;color:var(--amber)}
+.mini{padding:2px 7px!important;font-size:11px!important}
+.tgt{display:inline-block;width:9px;height:9px;border-radius:50%;vertical-align:0;margin-right:4px}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.lbl{font-family:var(--f-head);font-weight:600;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.inv{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.note{font-size:12.5px;line-height:1.45;color:#c8c4ba;margin:0}
+
+/* slots (hub inventory + hotbar) */
+.slot{all:unset;box-sizing:border-box;position:relative;aspect-ratio:1;min-width:0;background:#191a1e;box-shadow:inset 1px 1px 0 #000,inset -1px -1px 0 #3a3d44;display:grid;place-items:center;cursor:pointer}
+.slot:hover{background:#2b2418;box-shadow:inset 0 0 0 1px var(--amber)}
+.slot.sel{background:#3a2e17;box-shadow:inset 0 0 0 2px var(--amber)}
+.slot.empty{cursor:default}
+.slot.empty:hover{background:#191a1e;box-shadow:inset 1px 1px 0 #000,inset -1px -1px 0 #3a3d44}
+.slot .bgic{position:absolute;inset:0;display:grid;place-items:center;opacity:.32}
+.slot .bgic .ic{width:30px;height:30px}
+.slot .mg{position:relative;font-family:var(--f-head);font-weight:700;font-size:16px;letter-spacing:.02em;text-shadow:0 1px 0 #000}
+.slot.invbtn .ic{width:24px;height:24px}
+.slot.invbtn{background:#24262b}
+.chip{display:inline-grid;place-items:center;min-width:22px;height:18px;padding:0 3px;border:1.5px solid;font-family:var(--f-head);font-weight:700;font-size:11px;line-height:1;background:#16181c;flex:none}
+.chip.big{min-width:34px;height:30px;font-size:16px;border-width:2px}
+#inv{left:50%;transform:translateX(-50%);top:max(70px,env(safe-area-inset-top,0px));width:min(600px,calc(100% - 32px));max-height:calc(100% - 200px);overflow:auto;z-index:6}
+#ctag{position:absolute;pointer-events:none;display:flex;gap:7px;align-items:center;background:rgba(14,15,18,.94);box-shadow:inset 0 0 0 1px var(--hi);padding:4px 8px 4px 5px;font-family:var(--f-head);font-weight:600;font-size:12.5px;z-index:7;white-space:nowrap}
+.slot .tk{position:absolute;bottom:1px;right:3px;font-family:var(--f-mono);font-size:9.5px;color:var(--ink);text-shadow:0 1px 0 #000}
+.slot .kn{position:absolute;top:1px;left:3px;font-family:var(--f-mono);font-size:9px;color:var(--muted)}
+
+#hotbar{left:50%;transform:translateX(-50%);bottom:max(12px,env(safe-area-inset-bottom,0px));display:grid;grid-template-columns:repeat(11,46px);gap:3px;padding:5px}
+#hint{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(max(12px,env(safe-area-inset-bottom,0px)) + 66px);background:rgba(20,22,26,.92);box-shadow:inset 0 0 0 1px var(--amber);color:var(--ink);padding:6px 12px;font-size:12.5px;white-space:nowrap;pointer-events:none}
+#hint b{color:var(--amber);font-weight:600}
+
+/* alerts */
+#alerts{position:absolute;right:max(12px,env(safe-area-inset-right,0px));bottom:max(12px,env(safe-area-inset-bottom,0px));display:flex;gap:4px;align-items:flex-end}
+.al{all:unset;box-sizing:border-box;width:52px;height:52px;position:relative;cursor:pointer;display:grid;place-items:center;background:var(--panel);box-shadow:inset 1px 1px 0 var(--hi),inset -1px -1px 0 var(--lo),0 4px 12px rgba(0,0,0,.5)}
+.al .glyph{width:30px;height:30px}
+.al .n{position:absolute;right:3px;bottom:1px;font-family:var(--f-mono);font-size:12px;font-weight:500;text-shadow:0 1px 0 #000}
+.al.red{animation:blink 1.1s steps(2,end) infinite}
+.al:hover{box-shadow:inset 0 0 0 2px var(--amber),0 4px 12px rgba(0,0,0,.5)}
+@keyframes blink{50%{background:#5a2420}}
+
+/* legend */
+#legend{left:max(12px,env(safe-area-inset-left,0px));bottom:max(12px,env(safe-area-inset-bottom,0px));width:330px}
+#legend .inset{max-height:min(46vh,420px);overflow:auto}
+#legend ul{margin:0;padding:0;list-style:none;display:grid;gap:7px}
+#legend li{display:grid;grid-template-columns:18px 1fr;gap:8px;align-items:start;font-size:12.5px;line-height:1.4;color:#d4d0c6}
+#legend li .ic{margin-top:1px}
+#legend .keys{margin-top:8px;font-size:11.5px;color:var(--muted);line-height:1.6}
+#legend code{font-family:var(--f-mono);font-size:11.5px;color:var(--ink)}
+kbd{font-family:var(--f-mono);font-size:10.5px;padding:0 4px;background:#3a3d43;box-shadow:inset 0 -1px 0 #16171a;color:var(--ink)}
+#legendOpen{position:absolute;left:max(12px,env(safe-area-inset-left,0px));bottom:max(12px,env(safe-area-inset-bottom,0px))}
+
+#toasts{position:absolute;top:max(12px,env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);display:grid;gap:4px;justify-items:center;pointer-events:none;width:min(440px,calc(100% - 32px))}
+.toast{background:rgba(27,29,33,.95);box-shadow:inset 0 0 0 1px var(--hi),0 4px 10px rgba(0,0,0,.4);padding:6px 12px;font-size:12.5px;animation:tin .2s ease-out;max-width:100%}
+.toast b{font-weight:600}
+@keyframes tin{from{transform:translateY(-6px);opacity:0}}
+
+#tip{position:absolute;pointer-events:none;background:rgba(14,15,18,.95);box-shadow:inset 0 0 0 1px var(--hi);padding:5px 9px;font-size:12px;max-width:280px;z-index:5}
+#tip b{font-family:var(--f-head);font-weight:600;color:var(--head);letter-spacing:.02em}
+#tip .s{color:var(--muted);display:block;margin-top:1px}
+
+@media (max-width:860px){
+  #legend{display:none}
+  #legend.force{display:block;bottom:calc(max(12px,env(safe-area-inset-bottom,0px)) + 64px);width:auto;right:max(12px,env(safe-area-inset-right,0px));z-index:4}
+}
+@media (max-width:760px){
+  #overview{width:auto;right:max(12px,env(safe-area-inset-right,0px))}
+  #ovToggle{display:grid}
+  #overview.collapsed .ov-body{display:none}
+  #entity{top:auto;bottom:calc(max(12px,env(safe-area-inset-bottom,0px)) + 64px);left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));width:auto;max-height:46%;z-index:3}
+  #hotbar{left:max(12px,env(safe-area-inset-left,0px));right:calc(max(12px,env(safe-area-inset-right,0px)) + 0px);transform:none;grid-template-columns:repeat(7,minmax(0,1fr));width:auto}
+  #hotbar .slot:nth-child(n+8){display:none}
+  #inv{top:max(12px,env(safe-area-inset-top,0px));width:auto;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));transform:none}
+  #alerts{bottom:calc(max(12px,env(safe-area-inset-bottom,0px)) + 64px);flex-direction:column}
+  #entity:not([hidden]) ~ #alerts{display:none}
+  .al{width:44px;height:44px}
+  #hint{white-space:normal;width:calc(100% - 32px);text-align:center;bottom:calc(max(12px,env(safe-area-inset-bottom,0px)) + 64px)}
+  #legendOpen{bottom:calc(max(12px,env(safe-area-inset-bottom,0px)) + 64px)}
+}
+@media (prefers-reduced-motion:reduce){.al.red{animation:none;background:#5a2420}.toast{animation:none}}
+</style>
+
+<div id="app">
+  <canvas id="cv" aria-label="Factory map of agent sessions"></canvas>
+
+  <section class="panel" id="overview" aria-label="Overview">
+    <div class="ttl"><span>Overview</span><span class="ridge"></span><button class="xbtn" id="ovToggle" data-act="ovtoggle" aria-label="Collapse overview">–</button></div>
+    <div class="ov-body">
+      <div class="inset">
+        <div class="ov-list" id="ovList"></div>
+      </div>
+      <div class="ctl" id="ctl"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="entity" hidden aria-live="polite"></section>
+
+  <section class="panel" id="legend" aria-label="How it works">
+    <div class="ttl"><span>How it works</span><span class="ridge"></span><button class="xbtn" data-act="legend" aria-label="Close">×</button></div>
+    <div class="inset">
+      <ul>
+        <li><span id="lg-hex"></span><span><b>Hub</b> is the controller for one workstream. Drag a proposal from its inventory into the area to approve it. Set it to <b>Auto</b> and it places them for you.</span></li>
+        <li><span id="lg-array"></span><span><b>Batches</b>: a chain runs tickets in order in one spot. An array runs a big queue on several sessions at once; more cells finish sooner.</span></li>
+        <li><span id="lg-bot"></span><span><b>Bots</b> are short-lived sessions. They fly out and back without asking you.</span></li>
+        <li><span id="lg-msg"></span><span><b>Envelopes</b> are messages. Filled: report to the controller. White: instruction from it. Outlined: one session to another.</span></li>
+        <li><span id="lg-belt"></span><span><b>Belts</b> carry PRs. Ring colour is the target: white <code>main</code>, pink <code>candidate</code>, split both. Piles are stacks.</span></li>
+        <li><span id="lg-train"></span><span><b>Train</b> is the scheduled merge task. It brings ready PRs to the <b>rocket silo</b>, which launches them to the remote.</span></li>
+        <li><span id="lg-chest"></span><span><b>Chest</b> keeps archived sessions and their handoffs. Restore puts one back.</span></li>
+      </ul>
+      <div class="keys">Drag to pan · wheel to zoom · <kbd>E</kbd> inventory · <kbd>1</kbd>–<kbd>9</kbd> hotbar · hold <kbd>Alt</kbd> for ticket IDs · <kbd>Esc</kbd> drop · <kbd>Space</kbd> pause</div>
+    </div>
+  </section>
+  <button class="btn" id="legendOpen" data-act="legend" hidden>How it works</button>
+
+  <div id="alerts"></div>
+  <div id="hint" hidden></div>
+  <section class="panel" id="hotbar" aria-label="Hotbar"></section>
+  <div id="toasts" aria-live="polite"></div>
+  <div id="tip" hidden></div>
+  <section class="panel" id="inv" hidden aria-label="Inventory"></section>
+  <div id="ctag" hidden></div>
+</div>
+
+<script>
+(() => {
+const $ = s => document.querySelector(s);
+const cv = $('#cv'), ctx = cv.getContext('2d');
+const T = 28;
+const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const C = {ds:'#b38cff', cui:'#4fc3d9', amber:'#f0b44a', red:'#ff5a4e', green:'#7bd88f', ink:'#e9e5db', muted:'#9b978e',
+  main:'#eeeae0', cand:'#ff7eb6', grid:'#1b1e22', grid2:'#252930', belt:'#2b2e34', beltEdge:'#0b0c0e', body:'#202227', space:'#0b0c12'};
+const TGT = {main:{label:'main'}, candidate:{label:'candidate'}, both:{label:'main + candidate'}};
+const rand = (a,b) => a + Math.random()*(b-a);
+const pick = a => a[Math.floor(Math.random()*a.length)];
+const rgba = (hex,a) => { const n=parseInt(hex.slice(1),16); return `rgba(${n>>16},${(n>>8)&255},${n&255},${a})`; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const mod = (a, n) => ((a % n) + n) % n;
+let uid = 1, prSeq = 4810;
+
+/* ---------- world ---------- */
+const D = {
+  ds: {id:'ds', name:'Design system migration', short:'Design system', shape:'circle', color:C.ds, x:2,y:2,w:22,h:13, trunkY:14.5, side:'down', minY:2, maxY:14},
+  cui:{id:'cui', name:'Composable UI', short:'Composable UI', shape:'square', color:C.cui, x:2,y:22,w:22,h:13, trunkY:22.5, side:'up', minY:23, maxY:35},
+};
+const STATION = {x:27, y:12, w:3, h:13};
+const LOOP = [{x:40,y:6},{x:32.5,y:6},{x:32.5,y:31},{x:46.5,y:31},{x:46.5,y:6},{x:40,y:6}];
+const LOOP_LEN = 78, STOP_LOCAL = 25.5, STOP_SILO = 63, DEPOT = 84;
+const SILO = {x:47.7, y:16.2, w:3.6, h:3.6}, SILO_C = {x:49.5, y:18};
+const SPACE_X = 53.5;
+const PLATFORM = {x:56, y:4, w:17.5, h:29, name:'Space platform · Forgejo'};
+const PAD = {x:57.3, y:16.8, w:3, h:3.4}, PAD_C = {x:58.8, y:18.5};
+const NODES = {main:{x:65, y:8, w:3, h:3, flash:0}, candidate:{x:65, y:26, w:3, h:3, flash:0}};
+const FPATH = {
+  main:[{x:60.3,y:18.5},{x:62,y:18.5},{x:62,y:9.5},{x:65,y:9.5}],
+  candidate:[{x:60.3,y:18.5},{x:62,y:18.5},{x:62,y:27.5},{x:65,y:27.5}],
+};
+const WARE = {x:63.6, y:13.6, cols:10, rows:8, pitch:.8};
+const STARS = Array.from({length:260}, (_, i) => ({x: SPACE_X + ((i*7919) % 3100)/100, y: -12 + ((i*104729) % 6000)/100, b: .25 + ((i*31) % 70)/100}));
+
+const POOL = {
+  ds: [['DS-230','Dark-mode surface tokens','Dark surfaces','Ds'],['DS-233','Badge colour roles','Badge roles','Br'],['DS-236','Input border tokens','Input borders','Ib'],['DS-241','Tooltip elevation','Tooltip lift','Tl'],['DS-245','Link underline style','Link underline','Lu'],['DS-248','Tag radius scale','Tag radius','Tr']],
+  cui:[['UI-118','Headless Select','Headless Select','Hs'],[null,'Spike: measure what slots cost at render time','Slot perf spike','Sp'],['UI-121','Composable Tabs','Tabs','Tb'],['UI-127','Popover primitive','Popover','Po'],['UI-130','FormField composition','FormField','Ff'],['UI-133','Split List and ListItem','List split','Ls']],
+};
+const poolIdx = {ds:0, cui:0};
+const QS = {
+  ds: [
+    {q:'Button has a "ghost-alt" variant with no new token. Map it to "ghost" or keep it as a one-off?', o:['Map to ghost','Keep one-off']},
+    {q:'Card padding is 18px, between space-4 and space-5. Round down or up?', o:['space-4 (16px)','space-5 (20px)']},
+    {q:'The focus ring fails contrast on the dark surface. Use the inverse ring token there?', o:['Use inverse ring','Leave for DS-230']},
+  ],
+  cui:[
+    {q:'Toolbar consumers pass icons as props in 14 places. Migrate them now or add a compat shim?', o:['Migrate now','Add shim']},
+    {q:'DataTable columns: <Column> children or a render prop?', o:['<Column> children','Render prop']},
+    {q:'This form has a custom error layout. Keep it or use the FormField default?', o:['Use the default','Keep custom']},
+  ],
+};
+const MSG = {
+  report:{ds:['Typecheck clean, 4 stories updated','Found 3 more usages in /legacy, including them','Tests green, pushing branch'],
+          cui:['Slots extracted, old props still work','Retried a flaky snapshot, green now','Storybook updated for every slot']},
+  instruct:{ds:['Also cover the dense variant','Use the elevation tokens from DS-219','Skip /legacy, DS-260 handles it'],
+            cui:['Keep old props as deprecated aliases','Follow the slot pattern from UI-104','Add one story per slot']},
+  peer:{ds:['Heads up: --space-4.5 is now --space-5','I touched Button.tsx too, rebase after me'],
+        cui:['Toolbar now exports <ToolbarSlot>, use it','I moved useFocusTrap to /hooks']},
+};
+const LOGS = ['Read the ticket and 9 related files','Ran typecheck: clean','Updated 4 Storybook stories','Ran unit tests: 38 passed','Pushed branch'];
+const CI_FAILS = ['visual diff: 3 snapshots changed','lint: no-restricted-imports in Toolbar.tsx','typecheck: property "slot" is missing'];
+const FILES = ['Avatar','Banner','Breadcrumb','Calendar','Chip','Combobox','Drawer','Empty','Footer','Header','Kbd','Menu','Meter','Notice','Pager','Pill','Radio','Rating','Sheet','Skeleton','Slider','Stepper','Switch','Toast'];
+
+const nextProp = d => { const p = POOL[d][poolIdx[d]++ % POOL[d].length]; return {id:uid++, district:d, kind:'single', tid:p[0], title:p[1], ticket:p[2], mono:p[3]}; };
+const arrayProp = (d, prefix, start, n, fmtName, fmtTitle, name, mono, title) => ({id:uid++, district:d, kind:'array', title, ticket:name, mono, tid:`${prefix}-${start}…${start+n-1}`,
+  tickets:Array.from({length:n}, (_, i) => ({ticket:fmtName(i), tid:`${prefix}-${start+i}`, title:fmtTitle(i)}))});
+const hubs = {
+  ds: {kind:'hub', district:'ds', x:11, y:6, inv:[], botTimer:1, botsToday:31, archive:[], msgs:[], mode:'manual', autoT:1, last:null},
+  cui:{kind:'hub', district:'cui', x:11, y:28, inv:[], botTimer:2, botsToday:47, archive:[], msgs:[], mode:'manual', autoT:1, last:null},
+};
+const chestRect = h => ({x:h.x+3.6, y:h.y+.95, w:1.6, h:1.1});
+let ents = [], items = [], bots = [], buffer = [], fitems = [], particles = [], packets = [];
+const sim = {t:0, speed:1, nextProp:24, nextMsg:2, merged:{ds:4, cui:2}, ware:0};
+const forge = {merged:{main:23, candidate:8}};
+const train = {state:'depot', next:22, d:6, cargo:[], period:40, wait:0, goal:6, visits:0};
+const silo = {cargo:[], launches:6};
+let rocket = {state:'idle', t:0, cargo:[]};
+
+const cells = (() => {
+  let seed = 7; const r = () => (seed = (seed*16807) % 2147483647) / 2147483647;
+  const out = [];
+  for (let i=0;i<80;i++){ const x = r(); out.push({state: x < .56 ? 'review' : x < .78 ? 'green' : x < .89 ? 'fail' : 'draft', mine:null, stack:false}); }
+  [[3,'ds'],[11,'ds'],[17,'cui'],[24,'cui'],[25,'cui'],[26,'cui'],[40,'ds'],[52,'cui'],[61,'ds'],[66,'cui']].forEach(([i,d]) => out[i].mine = d);
+  [24,25,26, 44,45, 70,71,72].forEach(i => out[i].stack = true);
+  return out;
+})();
+
+/* ---------- entities: sessions (2×2) and arrays (cols+1 × 2) ---------- */
+function newMachine(d, x, y, p, o = {}) {
+  const m = Object.assign({id:uid++, kind:'machine', district:d, x, y, w:2, h:2, ticket:p.ticket, tid:p.tid ?? null, mono:p.mono || '?', title:p.title, state:'working',
+    progress:0, rate:1/rand(45,85), askAt: Math.random() < .6 ? rand(.3,.7) : null, asked:false, q:pick(QS[d]),
+    tokens:0, log:[{t:'Started by the '+D[d].short+' controller'}], logi:0, pr:null, fixing:false, born:sim.t,
+    target: pick(['main','main','main','candidate','both']), stack: Math.random() < .25 ? (Math.random() < .5 ? 2 : 3) : 1,
+    queue:[], chainName:null, chainDone:0, chainWait:1.5}, o);
+  m.logi = LOGS.findIndex((_, i) => (i+1)*0.18 > m.progress); if (m.logi < 0) m.logi = LOGS.length;
+  for (let i = 0; i < m.logi; i++) m.log.push({t:LOGS[i]});
+  ents.push(m); return m;
+}
+function newArray(d, x, y, p, o = {}){
+  const cols = o.cols || 4;
+  const a = Object.assign({id:uid++, kind:'array', district:d, x, y, cols, w:cols+1, h:2, ticket:p.ticket, tid:p.tid ?? null, mono:p.mono || '?', title:p.title,
+    total:p.tickets.length, done:0, queue:p.tickets.slice(), cells:Array.from({length:cols}, () => ({t:null})), state:'working',
+    tokens:0, born:sim.t, log:[{t:`Batch of ${p.tickets.length} tickets started`}]}, o);
+  ents.push(a); return a;
+}
+const isAlive = e => ents.includes(e);
+const center = e => ({x:e.x + e.w/2, y:e.y + e.h/2});
+function footprint(c){
+  if (c.move) return {w:c.move.w, h:c.move.h};
+  const p = c.prop || c.restore;
+  return p && p.kind === 'array' ? {w:5, h:2} : {w:2, h:2};
+}
+
+function pathLen(p){ let l=0; for(let i=1;i<p.length;i++) l+=Math.hypot(p[i].x-p[i-1].x,p[i].y-p[i-1].y); return l; }
+function segAt(p, d){
+  for (let i=1;i<p.length;i++){ const a=p[i-1], b=p[i], L=Math.hypot(b.x-a.x,b.y-a.y);
+    if (d <= L || i===p.length-1){ const k = L ? Math.min(1, Math.max(0,d/L)) : 0; return {x:a.x+(b.x-a.x)*k, y:a.y+(b.y-a.y)*k, dx:(b.x-a.x)/(L||1), dy:(b.y-a.y)/(L||1)}; }
+    d -= L; }
+  return {...p[p.length-1], dx:1, dy:0};
+}
+const posAt = segAt;
+function stubFor(e){ const d = D[e.district], cx = e.kind === 'array' ? e.x+.5 : e.x+1;
+  return [{x:cx, y: d.side==='down' ? e.y+e.h : e.y}, {x:cx, y:d.trunkY}]; }
+const arrRows = a => D[a.district].side === 'down' ? {cells:a.y+.55, coll:a.y+1.5} : {cells:a.y+1.45, coll:a.y+.5};
+function addItem(src, path, preTrunk, o){
+  const len = pathLen(path);
+  const it = Object.assign({id:uid++, kind:'item', district:src.district, machine:src.id, path, len, d:0, state:'moving'}, o);
+  it.failAt = o.fail ? Math.min(len-1.5, preTrunk + rand(3,8)) : null; it.ci = o.fail ? pick(CI_FAILS) : null;
+  items.push(it); return it;
+}
+function makeItem(m, fail){
+  const d = D[m.district], st = stubFor(m);
+  return addItem(m, [st[0], st[1], {x:STATION.x, y:d.trunkY}], Math.abs(st[1].y - st[0].y), {pr:m.pr, ticket:m.ticket, target:m.target, stack:m.stack, fail});
+}
+function prLabel(x){ return x.stack > 1 ? `PR #${x.pr} (stack of ${x.stack})` : `PR #${x.pr}`; }
+function ship(m){
+  m.state = 'done'; m.progress = 1;
+  if (!m.pr){ m.pr = prSeq; prSeq += m.stack; }
+  m.log.push({t: m.fixing ? 'Pushed fix to PR #'+m.pr : (m.stack>1 ? `Opened stack of ${m.stack} PRs from #${m.pr}` : 'Opened PR #'+m.pr) + ' → ' + TGT[m.target].label});
+  const fail = m.fixing ? false : Math.random() < .25;
+  makeItem(m, fail); m.chainWait = 1.5;
+  sendPacket('report', m, hubs[m.district], `Shipped ${prLabel(m)}`);
+  toast(`<b>${m.ticket}</b> shipped ${prLabel(m)}`);
+}
+
+/* ---------- messages between agents ---------- */
+const nameOf = e => e.kind === 'hub' ? `${D[e.district].short} controller` : e.ticket;
+function sendPacket(type, from, to, text){
+  const a = center(from.kind === 'hub' ? {x:from.x, y:from.y, w:3, h:3} : from), b = center(to.kind === 'hub' ? {x:to.x, y:to.y, w:3, h:3} : to);
+  packets.push({type, from, to, a, b, t:0, dur: Math.max(.9, Math.hypot(b.x-a.x, b.y-a.y)/7), text, district:from.district});
+}
+function deliver(p){
+  const line = {t:`${nameOf(p.from)} → ${nameOf(p.to)}: ${p.text}`, msg:true};
+  const h = hubs[p.district]; h.msgs.unshift(line); if (h.msgs.length > 8) h.msgs.pop();
+  if (p.to.kind === 'machine' && isAlive(p.to)) p.to.log.push({t:`From ${nameOf(p.from)}: ${p.text}`, msg:true});
+  if (p.from.kind === 'machine' && isAlive(p.from) && p.to.kind === 'machine') p.from.log.push({t:`To ${nameOf(p.to)}: ${p.text}`, msg:true});
+}
+function packetPos(p){
+  const k = Math.min(1, p.t/p.dur), mx = (p.a.x+p.b.x)/2, my = (p.a.y+p.b.y)/2 - Math.min(3, Math.hypot(p.b.x-p.a.x, p.b.y-p.a.y)*.3);
+  const u = 1-k; return {x:u*u*p.a.x + 2*u*k*mx + k*k*p.b.x, y:u*u*p.a.y + 2*u*k*my + k*k*p.b.y};
+}
+
+/* ---------- seed a realistic mid-day state ---------- */
+hubs.ds.inv.push(nextProp('ds'),
+  arrayProp('ds', 'DS', 250, 24, i => `${FILES[i]} colours`, i => `Replace hardcoded colours in ${FILES[i]}`, 'Colour sweep', 'Co', 'Replace hardcoded colours, one component per ticket'));
+hubs.cui.inv.push(nextProp('cui'),
+  {id:uid++, district:'cui', kind:'chain', ticket:'Form primitives', mono:'Fp', tid:'UI-140…142', title:'Form primitives, in order',
+   tickets:[{ticket:'Field context', mono:'Fc', tid:'UI-140', title:'FormField context'},{ticket:'Label parts', mono:'Lp', tid:'UI-141', title:'Label and HelpText parts'},{ticket:'Error slot', mono:'Es', tid:'UI-142', title:'Error message slot'}]});
+hubs.ds.archive.push({id:uid++, district:'ds', ticket:'Colour aliases', mono:'Ca', tid:'DS-203', title:'Remove legacy colour aliases', pr:4781, handoff:true},
+                     {id:uid++, district:'ds', ticket:'Type scale', mono:'Ty', tid:'DS-198', title:'Typography scale tokens', pr:4770, handoff:false});
+hubs.cui.archive.push({id:uid++, district:'cui', ticket:'Accordion', mono:'Ac', tid:'UI-088', title:'Compound Accordion', pr:4776, handoff:true});
+(() => {
+  const m1 = newMachine('ds', 4, 4, {ticket:'Button tokens', mono:'Bt', tid:'DS-212', title:'Migrate Button to new tokens'}, {state:'needs', progress:.55, askAt:.55, q:QS.ds[0], tokens:48200, target:'main', stack:1});
+  m1.log.push({t:'Asked you a question', bad:true});
+  newMachine('ds', 17, 4, {ticket:'Card spacing', mono:'Cs', tid:'DS-219', title:'Card spacing scale'}, {progress:.3, askAt:null, tokens:21900, target:'both', stack:1});
+  const ds3 = newMachine('ds', 5, 10, {ticket:'Focus ring', mono:'Fr', tid:'DS-224', title:'Focus ring tokens'}, {state:'done', progress:1, pr:4806, tokens:63100, target:'candidate', stack:1});
+  newMachine('cui', 4, 25, {ticket:'Toolbar slots', mono:'Ts', tid:'UI-104', title:'Extract Toolbar slots'}, {progress:.82, askAt:null, asked:true, tokens:71400, target:'main', stack:2});
+  newMachine('cui', 17, 25, {ticket:'Table columns', mono:'Tc', tid:'UI-109', title:'Composable DataTable columns'}, {progress:.2, askAt:.45, q:QS.cui[1], tokens:12800, target:'main', stack:1});
+  const c3 = newMachine('cui', 16, 31, {ticket:'Modal split', mono:'Ms', tid:'UI-097', title:'Split Modal into primitives'}, {state:'done', progress:1, pr:4808, tokens:90200, target:'main', stack:1});
+  c3.log.push({t:'Opened PR #4808 → main'});
+  const jam = makeItem(c3, true); jam.failAt = 8.5 + 3; jam.d = jam.failAt; jam.state = 'jam'; jam.ci = CI_FAILS[0];
+  c3.log.push({t:'CI failed: '+jam.ci, bad:true});
+  ds3.log.push({t:'Opened PR #4806 → candidate'});
+  const mv = makeItem(ds3, false); mv.d = mv.len - 3;
+  const arr = newArray('cui', 3, 31, arrayProp('cui', 'UI', 200, 40, i => `Form ${i+1}`, i => `Move form ${i+1} to <FormField>`, 'Form migration', 'Fm', 'Move every form onto <FormField>'), {tokens:388000});
+  arr.done = 11; arr.queue.splice(0, 11);
+  arr.cells.forEach(c => { c.t = arr.queue.shift(); c.p = rand(.1,.8); c.rate = 1/rand(12,20); c.state = 'working'; c.needAt = null; c.q = pick(QS.cui); });
+  buffer.push({district:'ds', pr:4802, ticket:'Icon tokens', target:'main', stack:1},
+              {district:'cui', pr:4795, ticket:'Menu stack', target:'main', stack:3, blockedBy:4791});
+})();
+
+/* ---------- camera ---------- */
+let vw = 0, vh = 0, dpr = 1;
+const cam = {x:18, y:18.5, z:1}; let camTarget = null;
+const S = () => T * cam.z;
+function resize(){ dpr = Math.min(2, window.devicePixelRatio || 1); vw = innerWidth; vh = innerHeight; cv.width = Math.round(vw*dpr); cv.height = Math.round(vh*dpr); }
+function fit(){
+  if (vw > 1100){
+    const left = 340, availW = vw - left - 24;
+    cam.z = Math.max(.3, Math.min(1.25, Math.min(availW / (73*T), (vh - 110) / (35*T))));
+    cam.x = 1 + (vw/2 - left)/S(); cam.y = 18.3;
+  } else {
+    const narrow = vw < 760;
+    cam.z = Math.max(.35, Math.min(1.25, Math.min((vw - (narrow?24:40)) / (36*T), (vh - (narrow?150:120)) / (39*T))));
+    cam.x = narrow ? 17.5 : 16.5; cam.y = narrow ? 17 : 18.5;
+  }
+}
+const s2w = (sx, sy) => ({x: cam.x + (sx - vw/2)/S(), y: cam.y + (sy - vh/2)/S()});
+const w2s = (x, y) => ({x: (x - cam.x)*S() + vw/2, y: (y - cam.y)*S() + vh/2});
+function focus(x, y){ camTarget = {x, y}; }
+
+/* ---------- interaction state ---------- */
+let sel = null, cursor = null, altMode = false, invOpen = false;
+const invCount = () => Object.values(hubs).reduce((a, h) => a + h.inv.length, 0);
+const mouse = {sx:0, sy:0, in:false, type:'mouse'};
+let down = null, slotDrag = null;
+
+/* ---------- sim ---------- */
+function archiveE(e, handoff){
+  const h = hubs[e.district], c = chestRect(h);
+  ents = ents.filter(x => x !== e);
+  h.archive.unshift({id:uid++, district:e.district, ticket:e.ticket, tid:e.tid, mono:e.mono, title:e.title, pr:e.pr, handoff, kind:e.kind});
+  particles.push({from:center(e), to:{x:c.x+c.w/2, y:c.y+c.h/2}, t:0, dur:.7, district:e.district});
+  if (sel?.ref === e) sel = null;
+}
+function placeProp(p, x, y, auto){
+  const h = hubs[p.district]; h.inv = h.inv.filter(q => q !== p); h.last = {x, y};
+  let e;
+  if (p.kind === 'array') e = newArray(p.district, x, y, p);
+  else if (p.kind === 'chain'){ const [first, ...rest] = p.tickets;
+    e = newMachine(p.district, x, y, first, {queue:rest, chainName:p.title, tokens:0, stack:1}); e.log.push({t:`Chain: ${p.tickets.length} tickets in order`}); }
+  else e = newMachine(p.district, x, y, p, {tokens:0});
+  toast(auto ? `Controller placed <b>${esc(p.ticket)}</b> next to your last one` : `Approved <b>${esc(p.ticket)}</b>. ${p.kind==='array' ? 'Array started' : 'Session started'}`);
+  return e;
+}
+function autoPlace(h, p){
+  const d = D[h.district], fp = p.kind === 'array' ? {w:5,h:2} : {w:2,h:2}, anc = h.last || {x:h.x, y:h.y};
+  let best = null, bd = 1e9;
+  for (let y = d.minY; y + fp.h <= d.maxY; y++) for (let x = d.x; x + fp.w <= d.x + d.w; x++){
+    if (!canPlace(h.district, x, y, fp.w, fp.h)) continue;
+    const dd = Math.hypot(x-anc.x, y-anc.y); if (dd < bd){ bd = dd; best = {x, y}; } }
+  if (!best){ toast(`No free room in <b>${D[h.district].short}</b>. The controller is waiting`); h.autoT = 8; return; }
+  placeProp(p, best.x, best.y, true);
+}
+function update(dt){
+  sim.t += dt;
+  for (const e of ents.slice()){
+    if (e.kind === 'array'){ updateArray(e, dt); continue; }
+    const m = e;
+    if (m.state === 'handoff'){ m.hoT -= dt; if (m.hoT <= 0){ archiveE(m, true); toast(`<b>${m.ticket}</b> wrote a handoff and went into the chest`); } continue; }
+    if (m.state === 'done' && m.queue.length && !items.some(i => i.machine === m.id)){
+      m.chainWait -= dt;
+      if (m.chainWait <= 0){
+        const h = hubs[m.district], c = chestRect(h);
+        h.archive.unshift({id:uid++, district:m.district, ticket:m.ticket, tid:m.tid, mono:m.mono, title:m.title, pr:m.pr, handoff:true});
+        particles.push({from:center(m), to:{x:c.x+c.w/2, y:c.y+c.h/2}, t:0, dur:.7, district:m.district});
+        const nx = m.queue.shift();
+        Object.assign(m, {ticket:nx.ticket, tid:nx.tid, mono:nx.mono, title:nx.title, state:'working', progress:0, pr:null, fixing:false, asked:false,
+          askAt: Math.random() < .4 ? rand(.3,.7) : null, q:pick(QS[m.district]), log:[{t:`Next in chain (${m.chainName}): ${nx.ticket}`}, {t:'Read the handoff from the previous ticket'}], logi:0, tokens:0, born:sim.t, stack:1, chainDone:m.chainDone+1});
+        toast(`Chain moved on to <b>${nx.ticket}</b>. The previous one is in the chest with a handoff`);
+      }
+      continue;
+    }
+    if (m.state !== 'working') continue;
+    m.progress += m.rate*dt; m.tokens += dt*rand(180,420);
+    while (m.logi < LOGS.length && m.progress >= (m.logi+1)*0.18 && !m.fixing){ m.log.push({t:LOGS[m.logi]}); m.logi++; }
+    if (!m.asked && m.askAt != null && m.progress >= m.askAt){
+      m.progress = m.askAt; m.state = 'needs'; m.log.push({t:'Asked you a question', bad:true});
+      sendPacket('ask', m, hubs[m.district], 'Needs a decision from you');
+      toast(`<b>${m.ticket}</b> is waiting on you`);
+    }
+    if (m.state === 'working' && m.progress >= 1) ship(m);
+  }
+  // local items
+  for (const it of items){
+    if (it.state !== 'moving') continue;
+    let nd = it.d + 2.2*dt;
+    if (it.failAt != null && nd >= it.failAt){ nd = it.failAt; it.state = 'jam';
+      const m = ents.find(x => x.id === it.machine); if (m) m.log.push({t:`CI failed on ${it.ticket}: ${it.ci}`, bad:true});
+      toast(`<b>PR #${it.pr}</b> failed CI. The ${D[it.district].short} belt is jammed`); }
+    const cur = posAt(it.path, it.d), np = posAt(it.path, nd);
+    let blocked = false;
+    for (const o of items){ if (o === it || o.district !== it.district) continue;
+      const op = posAt(o.path, o.d), dn = Math.hypot(np.x-op.x, np.y-op.y), dc = Math.hypot(cur.x-op.x, cur.y-op.y);
+      if (dn < .75 && dn < dc){ blocked = true; break; } }
+    if (blocked && it.state === 'moving') continue;
+    it.d = nd;
+    if (it.d >= it.len){ it.state = 'gone'; buffer.push({district:it.district, pr:it.pr, ticket:it.ticket, target:it.target, stack:it.stack}); }
+  }
+  items = items.filter(i => i.state !== 'gone');
+  // remote items
+  for (const f of fitems){ f.d += 3*dt; if (f.d >= f.len){ f.done = true; forge.merged[f.branch] += f.stack; NODES[f.branch].flash = 1; } }
+  fitems = fitems.filter(f => !f.done);
+  for (const n of Object.values(NODES)) n.flash = Math.max(0, n.flash - dt*1.5);
+  // packets
+  for (const p of packets){ p.t += dt; if (p.to.kind !== 'hub' && isAlive(p.to)) p.b = center(p.to); if (p.t >= p.dur && !p.done){ p.done = true; deliver(p); } }
+  packets = packets.filter(p => !p.done);
+  sim.nextMsg -= dt;
+  if (sim.nextMsg <= 0){
+    sim.nextMsg = rand(1.8, 3.6);
+    const live = ents.filter(e => e.kind === 'machine' && e.state === 'working');
+    if (live.length){
+      const m = pick(live), d = m.district, h = hubs[d], r = Math.random();
+      const peers = live.filter(o => o !== m && o.district === d);
+      if (r < .4) sendPacket('report', m, h, pick(MSG.report[d]));
+      else if (r < .7) sendPacket('instruct', h, m, pick(MSG.instruct[d]));
+      else if (peers.length) sendPacket('peer', m, pick(peers), pick(MSG.peer[d]));
+    }
+  }
+  // bots + auto placement
+  for (const h of Object.values(hubs)){
+    h.botTimer -= dt;
+    if (h.botTimer <= 0){
+      h.botTimer = rand(2.2, 4.5);
+      const targets = ents.filter(m => m.district === h.district && m.state === 'working');
+      if (targets.length){ bots.push({district:h.district, m:pick(targets), t:0, trail:[], from:{x:h.x+1.5, y:h.y+1.5}, ang:rand(0,6.28)}); h.botsToday++; }
+    }
+    if (h.mode === 'auto' && h.inv.length){ h.autoT -= dt; if (h.autoT <= 0){ h.autoT = 2.5; autoPlace(h, h.inv[0]); } }
+  }
+  const OUT=1.1, STAY=2.6, BACK=1.1;
+  for (const b of bots){
+    b.t += dt;
+    if (!isAlive(b.m) && b.t < OUT+STAY) b.t = OUT+STAY;
+    const c = center(b.m), R = Math.max(b.m.w, b.m.h)*.62, e = k => k<.5 ? 2*k*k : 1-Math.pow(-2*k+2,2)/2;
+    const orb = {x:c.x + Math.cos(b.ang + b.t*2.4)*R, y:c.y + Math.sin(b.ang + b.t*2.4)*R*.8};
+    let p;
+    if (b.t < OUT){ const k=e(b.t/OUT); const o0={x:c.x+Math.cos(b.ang)*R, y:c.y+Math.sin(b.ang)*R*.8}; p = {x:b.from.x+(o0.x-b.from.x)*k, y:b.from.y+(o0.y-b.from.y)*k}; }
+    else if (b.t < OUT+STAY) p = orb;
+    else { const k=e(Math.min(1,(b.t-OUT-STAY)/BACK)); p = {x:orb.x+(b.from.x-orb.x)*k, y:orb.y+(b.from.y-orb.y)*k}; }
+    b.p = p; b.trail.push(p); if (b.trail.length > 9) b.trail.shift();
+  }
+  bots = bots.filter(b => b.t < OUT+STAY+BACK);
+  for (const p of particles) p.t += dt;
+  particles = particles.filter(p => p.t < p.dur);
+  // proposals
+  sim.nextProp -= dt;
+  if (sim.nextProp <= 0){
+    sim.nextProp = rand(22, 34);
+    const hs = Object.values(hubs).filter(h => h.inv.length < 5);
+    if (hs.length){ const h = pick(hs), p = nextProp(h.district); h.inv.push(p);
+      toast(`${D[h.district].short} controller wants to start <b>${p.ticket}</b>`); }
+  }
+  sim.ware -= dt;
+  if (sim.ware <= 0){ sim.ware = rand(3,6); const c = pick(cells); c.state = {review: pick(['green','review','fail']), green:'review', fail:'review', draft:'review'}[c.state]; }
+  // train (local scheduled task)
+  const base = Math.floor((train.d - 6) / LOOP_LEN) * LOOP_LEN;
+  const go = (state, goal) => { train.state = state; train.goal = goal; };
+  if (train.state === 'depot'){ train.next -= dt; if (train.next <= 0) go('toLocal', base + STOP_LOCAL + LOOP_LEN*(train.d - base > STOP_LOCAL ? 1 : 0)); }
+  else if (train.state.startsWith('to')){
+    const left = train.goal - train.d, v = Math.min(10, left*2.2 + 1.2);
+    train.d = Math.min(train.goal, train.d + v*dt);
+    if (train.d >= train.goal - .001){
+      if (train.state === 'toLocal'){ train.state = 'loading'; train.wait = 1.4; }
+      else if (train.state === 'toSilo'){ train.state = 'unloading'; train.wait = 1.4; }
+      else { train.state = 'depot'; train.next = train.period; train.visits++;
+        const blocked = buffer.find(b => b.blockedBy);
+        if (blocked && train.visits >= 2){ toast(`Base PR #${blocked.blockedBy} merged by its author. Stack <b>${blocked.ticket}</b> can go on the next train`); delete blocked.blockedBy; } }
+    }
+  }
+  else if (train.state === 'loading'){ train.wait -= dt; if (train.wait <= 0){
+      const take = buffer.filter(b => !b.blockedBy), left = buffer.filter(b => b.blockedBy);
+      train.cargo = take; buffer = left;
+      const n = take.reduce((a,b) => a + b.stack, 0);
+      toast(n ? `Merge train loaded <b>${n} PR${n>1?'s':''}</b>${left.length ? ` and left ${left.length} stack behind: its base is not merged` : ''}` : 'Merge train came by. Nothing ready to merge');
+      go('toSilo', train.d - STOP_LOCAL + STOP_SILO); } }
+  else if (train.state === 'unloading'){ train.wait -= dt; if (train.wait <= 0){
+      silo.cargo.push(...train.cargo); train.cargo = [];
+      go('toDepot', train.d - STOP_SILO + DEPOT); } }
+  // rocket (push to remote)
+  if (rocket.state === 'idle' && silo.cargo.length){
+    rocket = {state:'launch', t:0, cargo:silo.cargo.splice(0)}; silo.launches++;
+    const n = rocket.cargo.reduce((a,b) => a + b.stack, 0);
+    toast(`Rocket launched: <b>${n} PR${n>1?'s':''}</b> on the way to Forgejo`);
+  } else if (rocket.state === 'launch'){ rocket.t += dt; if (rocket.t > 2.4){ rocket.state = 'land'; rocket.t = 0; } }
+  else if (rocket.state === 'land'){ rocket.t += dt; if (rocket.t > 1.8){
+      let k = 0;
+      for (const c of rocket.cargo){
+        const branches = c.target === 'both' ? ['main','candidate'] : [c.target];
+        for (const br of branches){ fitems.push({district:c.district, branch:br, stack:c.stack, path:FPATH[br], len:pathLen(FPATH[br]), d:-k*.9}); k++; }
+        sim.merged[c.district] += c.stack;
+      }
+      rocket = {state:'idle', t:0, cargo:[]};
+  } }
+}
+function updateArray(a, dt){
+  if (a.state === 'handoff'){ a.hoT -= dt; if (a.hoT <= 0){ archiveE(a, true); toast(`<b>${a.title}</b> wrote a handoff and went into the chest`); } return; }
+  let active = 0;
+  a.cells.forEach((c, i) => {
+    if (!c.t && a.queue.length && !c.remove){ c.t = a.queue.shift(); c.p = 0; c.rate = 1/rand(9,18); c.state = 'working'; c.needAt = Math.random() < .07 ? rand(.3,.7) : null; c.q = pick(QS[a.district]); }
+    if (!c.t) return;
+    active++;
+    if (c.state !== 'working') return;
+    c.p += c.rate*dt;
+    if (c.needAt != null && c.p >= c.needAt){ c.p = c.needAt; c.needAt = null; c.state = 'needs'; a.log.push({t:`${c.t.ticket} asked you a question`, bad:true}); toast(`<b>${c.t.ticket}</b> in the ${esc(a.title)} array is waiting on you`); return; }
+    if (c.p >= 1){
+      const d = D[a.district], st = stubFor(a), r = arrRows(a), cx = a.x + 1.5 + i;
+      const path = [{x:cx, y:r.coll}, {x:st[0].x, y:r.coll}, {x:st[0].x, y:d.trunkY}, {x:STATION.x, y:d.trunkY}];
+      addItem(a, path, pathLen(path.slice(0,3)), {pr:prSeq++, ticket:c.t.ticket, target:'main', stack:1, fail: Math.random() < .08});
+      a.done++; a.log.push({t:`${c.t.ticket} shipped`}); c.t = null; c.state = null;
+    }
+  });
+  while (a.cells.length > 1 && a.cells[a.cells.length-1].remove && !a.cells[a.cells.length-1].t){ a.cells.pop(); a.cols--; a.w = a.cols+1; }
+  a.tokens += dt*active*rand(150,300);
+  a.state = a.cells.some(c => c.state === 'needs') ? 'needs' : (active || a.queue.length) ? 'working' : 'done';
+}
+
+/* ---------- drawing ---------- */
+function shapePath(shape, cx, cy, r){
+  ctx.beginPath();
+  if (shape === 'circle') ctx.arc(cx, cy, r, 0, Math.PI*2);
+  else if (shape === 'square') ctx.rect(cx-r, cy-r, r*2, r*2);
+  else if (shape === 'hex'){ for (let i=0;i<6;i++){ const a=Math.PI/3*i+Math.PI/6; ctx[i?'lineTo':'moveTo'](cx+Math.cos(a)*r, cy+Math.sin(a)*r);} ctx.closePath(); }
+  else if (shape === 'diamond'){ ctx.moveTo(cx,cy-r); ctx.lineTo(cx+r,cy); ctx.lineTo(cx,cy+r); ctx.lineTo(cx-r,cy); ctx.closePath(); }
+}
+function text(wx, wy, str, px, color, align='center', weight='500', fam='"IBM Plex Mono", monospace'){
+  const p = w2s(wx, wy);
+  ctx.save(); ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.font = `${weight} ${px}px ${fam}`; ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'middle';
+  ctx.fillText(str, p.x, p.y); ctx.restore();
+}
+const HEAD = '"Chakra Petch", sans-serif';
+function belt(ax, ay, bx, by, color, moving, t){
+  const s = S(), hw = .27;
+  const x0 = Math.min(ax,bx)-hw, y0 = Math.min(ay,by)-hw, w = Math.abs(bx-ax)+hw*2, h = Math.abs(by-ay)+hw*2;
+  ctx.fillStyle = C.belt; ctx.fillRect(x0, y0, w, h);
+  ctx.strokeStyle = C.beltEdge; ctx.lineWidth = 1.5/s; ctx.strokeRect(x0, y0, w, h);
+  const L = Math.hypot(bx-ax, by-ay); if (L < .01) return;
+  const dx = (bx-ax)/L, dy = (by-ay)/L, px = -dy, py = dx;
+  const off = moving && !REDUCE ? (t*1.6) % .6 : 0;
+  ctx.strokeStyle = rgba(color, moving ? .5 : .25); ctx.lineWidth = 2/s; ctx.beginPath();
+  for (let k = off; k < L; k += .6){
+    const cx = ax+dx*k, cy = ay+dy*k;
+    ctx.moveTo(cx-dx*.09+px*.14, cy-dy*.09+py*.14); ctx.lineTo(cx+dx*.07, cy+dy*.07); ctx.lineTo(cx-dx*.09-px*.14, cy-dy*.09-py*.14);
+  }
+  ctx.stroke();
+}
+function drawPR(x, y, district, target, stack, opts = {}){
+  const s = S(), d = D[district], r = opts.r || .27;
+  const n = Math.min(3, stack || 1);
+  for (let k = n-1; k >= 0; k--){
+    const ox = x - k*.13, oy = y - k*.13;
+    shapePath(d.shape, ox, oy, r);
+    ctx.fillStyle = opts.color || (k ? rgba(d.color,.55) : d.color); ctx.fill();
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 1.2/s; ctx.stroke();
+  }
+  if (!target) return;
+  shapePath(d.shape, x, y, r + .1);
+  ctx.lineWidth = 2.4/s; ctx.strokeStyle = target === 'candidate' ? C.cand : C.main; ctx.stroke();
+  if (target === 'both'){ ctx.save(); ctx.beginPath(); ctx.rect(x, y-1, 1, 2); ctx.clip();
+    shapePath(d.shape, x, y, r + .1); ctx.strokeStyle = C.cand; ctx.lineWidth = 2.4/s; ctx.stroke(); ctx.restore(); }
+}
+function envelope(x, y, type, color, s){
+  const w = .5, h = .34, col = {report:color, instruct:C.main, peer:color, ask:C.red}[type];
+  ctx.beginPath(); ctx.rect(x-w/2, y-h/2, w, h);
+  if (type === 'peer'){ ctx.fillStyle = '#16181c'; ctx.fill(); ctx.strokeStyle = col; ctx.lineWidth = 2/s; ctx.stroke(); }
+  else { ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 1.2/s; ctx.stroke(); }
+  ctx.beginPath(); ctx.moveTo(x-w/2, y-h/2); ctx.lineTo(x, y+.02); ctx.lineTo(x+w/2, y-h/2);
+  ctx.strokeStyle = type === 'peer' ? col : '#000'; ctx.lineWidth = 1.2/s; ctx.stroke();
+}
+function lock(x, y, s){
+  ctx.fillStyle = C.amber; ctx.fillRect(x-.16, y-.04, .32, .24);
+  ctx.strokeStyle = C.amber; ctx.lineWidth = 2/s; ctx.beginPath(); ctx.arc(x, y-.05, .11, Math.PI, 0); ctx.stroke();
+}
+function brackets(x, y, w, h, color){
+  const s = S(), p = .22, L = .5; x-=p; y-=p; w+=p*2; h+=p*2;
+  ctx.strokeStyle = color; ctx.lineWidth = 2.5/s; ctx.beginPath();
+  [[x,y,1,1],[x+w,y,-1,1],[x,y+h,1,-1],[x+w,y+h,-1,-1]].forEach(([cx,cy,sx,sy]) => { ctx.moveTo(cx,cy+sy*L); ctx.lineTo(cx,cy); ctx.lineTo(cx+sx*L,cy); });
+  ctx.stroke();
+}
+function region(r, color, label, active, labelBelow){
+  const s = S();
+  ctx.fillStyle = rgba(color, active ? .09 : .045); ctx.fillRect(r.x, r.y, r.w, r.h);
+  ctx.setLineDash([.45,.3]); ctx.strokeStyle = rgba(color, active ? .9 : .4); ctx.lineWidth = (active?2:1.5)/s;
+  ctx.strokeRect(r.x, r.y, r.w, r.h); ctx.setLineDash([]);
+  text(r.x+.15, labelBelow ? r.y+r.h+.4 : r.y-.35, label.toUpperCase(), Math.max(10, Math.min(14, s*.5)), rgba(color,.95), 'left', '600', HEAD);
+}
+function rocketShape(x, y, s, scale, flame){
+  ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
+  if (flame){ const f = REDUCE ? 1 : .8 + Math.random()*.5;
+    ctx.beginPath(); ctx.moveTo(-.25, .9); ctx.lineTo(0, .9 + 1.3*f); ctx.lineTo(.25, .9); ctx.closePath(); ctx.fillStyle = C.amber; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-.12, .9); ctx.lineTo(0, .9 + .7*f); ctx.lineTo(.12, .9); ctx.closePath(); ctx.fillStyle = '#fff4d6'; ctx.fill(); }
+  ctx.beginPath(); ctx.moveTo(0, -1.2); ctx.quadraticCurveTo(.42, -.6, .36, .9); ctx.lineTo(-.36, .9); ctx.quadraticCurveTo(-.42, -.6, 0, -1.2); ctx.closePath();
+  ctx.fillStyle = '#d9d4c8'; ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5/(s*scale); ctx.stroke();
+  ctx.fillStyle = C.amber; ctx.fillRect(-.36, .35, .72, .16);
+  ctx.beginPath(); ctx.moveTo(-.36, .5); ctx.lineTo(-.65, 1); ctx.lineTo(-.36, .9); ctx.closePath(); ctx.moveTo(.36, .5); ctx.lineTo(.65, 1); ctx.lineTo(.36, .9); ctx.closePath(); ctx.fillStyle = '#8d877b'; ctx.fill();
+  ctx.restore();
+}
+function alertMark(cx, cy, shape, r, s, rt, bx, by){
+  const pr = REDUCE ? 1 : .55 + .45*Math.abs(Math.sin(rt*3.2));
+  if (shape){ shapePath(shape, cx, cy, r); ctx.strokeStyle = rgba(C.red, pr); ctx.lineWidth = 3/s; ctx.stroke(); }
+  ctx.beginPath(); ctx.moveTo(bx, by-.45); ctx.lineTo(bx+.45, by+.33); ctx.lineTo(bx-.45, by+.33); ctx.closePath();
+  ctx.fillStyle = rgba(C.red, pr); ctx.fill(); text(bx, by+.08, '!', Math.max(9, s*.5), '#fff', 'center', '700', HEAD);
+}
+function drawMachine(m, s, rt){
+  const d = D[m.district], cx = m.x+1, cy = m.y+1;
+  const done = m.state === 'done', needs = m.state === 'needs', ho = m.state === 'handoff';
+  shapePath(d.shape, cx, cy, .85); ctx.fillStyle = C.body; ctx.fill();
+  ctx.strokeStyle = done ? rgba(d.color,.35) : ho ? C.amber : d.color; ctx.lineWidth = 2.5/s; ctx.stroke();
+  ctx.save(); ctx.translate(cx, cy);
+  if ((m.state === 'working' || ho) && !REDUCE) ctx.rotate(rt*(ho ? 4 : 1.6));
+  shapePath(d.shape, 0, 0, .5);
+  ctx.fillStyle = needs ? C.red : done ? '#3b3e44' : ho ? C.amber : d.color; ctx.fill();
+  if ((m.state === 'working' || ho)){ ctx.strokeStyle = C.body; ctx.lineWidth = 3/s; ctx.beginPath(); ctx.arc(0, 0, .5, -.5, .5); ctx.stroke(); }
+  ctx.restore();
+  if (done){ const bx = cx+.62, by = cy+.62; ctx.beginPath(); ctx.arc(bx, by, .24, 0, Math.PI*2); ctx.fillStyle = '#2d3036'; ctx.fill(); ctx.strokeStyle = C.ink; ctx.lineWidth = 2/s; ctx.beginPath(); ctx.moveTo(bx-.1,by); ctx.lineTo(bx-.02,by+.08); ctx.lineTo(bx+.11,by-.08); ctx.stroke(); }
+  if (!done && !ho){ ctx.fillStyle = '#0d0e10'; ctx.fillRect(cx-.5, cy+.6, 1, .14);
+    ctx.fillStyle = needs ? C.red : C.green; ctx.fillRect(cx-.48, cy+.62, .96*Math.min(1,m.progress), .1); }
+  if (m.queue.length){
+    ctx.strokeStyle = rgba(d.color,.6); ctx.lineWidth = 1.5/s; ctx.beginPath(); ctx.moveTo(m.x+2.2, m.y+.3); ctx.lineTo(m.x+2.2, m.y+.3+(m.queue.length-1)*.42); ctx.stroke();
+    for (let i = 0; i < m.queue.length; i++){ shapePath(d.shape, m.x+2.2, m.y+.3+i*.42, .13); ctx.fillStyle = rgba(d.color,.75); ctx.fill(); }
+  }
+  if (needs) alertMark(cx, cy, d.shape, 1.05, s, rt, cx+.85, cy-.95);
+  if (s > 10) text(cx, cy+.02, m.mono, Math.max(8, Math.min(14, s*.44)), needs ? '#fff' : done ? C.muted : '#121317', 'center', '700', HEAD);
+  if (s > 13) text(cx, d.side==='down' ? cy-1.25 : cy+1.3, altMode ? tidText(m) : m.ticket, Math.max(8, Math.min(11, s*.4)), altMode ? C.amber : done ? C.muted : C.ink, 'center');
+}
+function drawArray(a, s, rt, t){
+  const d = D[a.district], r = arrRows(a), jam = items.some(i => i.district===a.district && i.state==='jam');
+  ctx.fillStyle = '#1b1d21'; ctx.fillRect(a.x, a.y, a.w, a.h);
+  ctx.strokeStyle = a.state === 'needs' ? C.red : a.state === 'done' ? rgba(d.color,.35) : rgba(d.color,.75); ctx.lineWidth = 2/s; ctx.strokeRect(a.x, a.y, a.w, a.h);
+  belt(a.x + a.w - .5, r.coll, a.x + .5, r.coll, d.color, !jam && a.state !== 'done', t);
+  const qy = r.cells - .45;
+  ctx.fillStyle = '#2a2c31'; ctx.fillRect(a.x+.1, qy, .8, .9); ctx.strokeStyle = rgba(d.color,.6); ctx.lineWidth = 1.5/s; ctx.strokeRect(a.x+.1, qy, .8, .9);
+  for (let k = 0; k < Math.min(3, a.queue.length); k++){ ctx.fillStyle = rgba(d.color, .35 + k*.2); ctx.fillRect(a.x+.25, qy+.62-k*.2, .5, .14); }
+  a.cells.forEach((c, i) => {
+    const cx = a.x + 1.5 + i, cy = r.cells;
+    shapePath(d.shape, cx, cy, .36); ctx.fillStyle = C.body; ctx.fill();
+    ctx.strokeStyle = c.remove ? C.muted : c.state === 'needs' ? C.red : c.t ? d.color : rgba(d.color,.3); ctx.lineWidth = 2/s; ctx.stroke();
+    if (c.t){ ctx.beginPath(); ctx.arc(cx, cy, .2, -Math.PI/2, -Math.PI/2 + Math.PI*2*Math.min(1,c.p)); ctx.strokeStyle = c.state==='needs' ? C.red : C.green; ctx.lineWidth = 3/s; ctx.stroke(); }
+  });
+  const k = a.done / a.total, sy = d.side==='down' ? a.y+.06 : a.y+a.h-.16;
+  ctx.fillStyle = '#0d0e10'; ctx.fillRect(a.x+1.1, sy, a.w-1.2, .1);
+  ctx.fillStyle = C.green; ctx.fillRect(a.x+1.1, sy, (a.w-1.2)*k, .1);
+  if (a.state === 'needs'){ const ci = a.cells.findIndex(c => c.state === 'needs'); alertMark(0, 0, null, 0, s, rt, a.x+1.5+ci, r.cells-.95); }
+  if (s > 13){ const ly = d.side==='down' ? a.y-.3 : a.y+a.h+.3;
+    text(a.x + 1.1, ly, altMode ? tidText(a) : s > 18 ? `${a.ticket} · ${a.done}/${a.total}` : `${a.mono} · ${a.done}/${a.total}`, Math.max(8, Math.min(11, s*.4)), a.state==='done' ? C.muted : C.ink, 'left'); }
+}
+
+function draw(){
+  const s = S(), t = sim.t, rt = performance.now()/1000;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle = '#14161a'; ctx.fillRect(0,0,vw,vh);
+  ctx.setTransform(dpr*s, 0, 0, dpr*s, dpr*(vw/2 - cam.x*s), dpr*(vh/2 - cam.y*s));
+  const x0 = Math.floor(cam.x - vw/2/s) - 1, x1 = Math.ceil(cam.x + vw/2/s) + 1, y0 = Math.floor(cam.y - vh/2/s) - 1, y1 = Math.ceil(cam.y + vh/2/s) + 1;
+  const gx1 = Math.min(x1, SPACE_X);
+  if (s > 9){ ctx.strokeStyle = C.grid; ctx.lineWidth = 1/s; ctx.beginPath();
+    for (let x=x0;x<=gx1;x++){ ctx.moveTo(x,y0); ctx.lineTo(x,y1); } for (let y=y0;y<=y1;y++){ ctx.moveTo(x0,y); ctx.lineTo(gx1,y); } ctx.stroke(); }
+  ctx.strokeStyle = C.grid2; ctx.lineWidth = 1/s; ctx.beginPath();
+  for (let x=Math.ceil(x0/8)*8;x<=gx1;x+=8){ ctx.moveTo(x,y0); ctx.lineTo(x,y1); } for (let y=Math.ceil(y0/8)*8;y<=y1;y+=8){ ctx.moveTo(x0,y); ctx.lineTo(gx1,y); } ctx.stroke();
+
+  // space + platform
+  if (x1 > SPACE_X - 2){
+    const g = ctx.createLinearGradient(SPACE_X-2, 0, SPACE_X+.5, 0); g.addColorStop(0, 'rgba(11,12,18,0)'); g.addColorStop(1, C.space);
+    ctx.fillStyle = g; ctx.fillRect(SPACE_X-2, y0, 2.5, y1-y0);
+    ctx.fillStyle = C.space; ctx.fillRect(SPACE_X+.5, y0, Math.max(0, x1-SPACE_X), y1-y0);
+    for (const st of STARS){ if (st.x < x0 || st.x > x1 || st.y < y0 || st.y > y1) continue;
+      const tw = REDUCE ? 1 : .7 + .3*Math.sin(rt*1.3 + st.x*3);
+      ctx.fillStyle = `rgba(230,228,240,${st.b*tw})`; ctx.fillRect(st.x, st.y, 1.6/s, 1.6/s); }
+    const P = PLATFORM, c = .9;
+    ctx.beginPath(); ctx.moveTo(P.x+c, P.y); ctx.lineTo(P.x+P.w-c, P.y); ctx.lineTo(P.x+P.w, P.y+c); ctx.lineTo(P.x+P.w, P.y+P.h-c); ctx.lineTo(P.x+P.w-c, P.y+P.h);
+    ctx.lineTo(P.x+c, P.y+P.h); ctx.lineTo(P.x, P.y+P.h-c); ctx.lineTo(P.x, P.y+c); ctx.closePath();
+    ctx.fillStyle = '#1a1c22'; ctx.fill(); ctx.strokeStyle = '#5c6170'; ctx.lineWidth = 2.5/s; ctx.stroke();
+    ctx.strokeStyle = '#22252c'; ctx.lineWidth = 1/s; ctx.beginPath();
+    for (let x = P.x+2; x < P.x+P.w; x += 2){ ctx.moveTo(x, P.y+.4); ctx.lineTo(x, P.y+P.h-.4); } ctx.stroke();
+    text(P.x+.2, P.y-.4, P.name.toUpperCase(), Math.max(10, Math.min(14, s*.5)), '#c9c4b8', 'left', '600', HEAD);
+  }
+  for (const d of Object.values(D)) region(d, d.color, d.name, cursor && cursor.district === d.id, d.side === 'up');
+
+  // rail loop
+  ctx.fillStyle = '#2a2622';
+  for (let i=1;i<LOOP.length;i++){ const a=LOOP[i-1], b=LOOP[i], L=Math.hypot(b.x-a.x,b.y-a.y), dx=(b.x-a.x)/L, dy=(b.y-a.y)/L;
+    for (let k=0;k<L;k+=.6){ const cx=a.x+dx*k, cy=a.y+dy*k; if (dx) ctx.fillRect(cx-.11, cy-.95, .22, 1.9); else ctx.fillRect(cx-.95, cy-.11, 1.9, .22); } }
+  ctx.strokeStyle = '#6b665d'; ctx.lineWidth = 2/s;
+  for (const o of [-.6, .6]) ctx.strokeRect(32.5+o, 6+o, 14-2*o, 25-2*o);
+
+  // local belts
+  for (const m of ents){ const st = stubFor(m), jam = items.some(i => i.district===m.district && i.state==='jam'), dn = D[m.district].side === 'down';
+    belt(st[0].x, st[0].y, st[1].x, st[1].y + (dn ? -.3 : .3), D[m.district].color, !jam, t); }
+  for (const d of Object.values(D)){ const jam = items.some(i => i.district===d.id && i.state==='jam'); belt(d.x+.5, d.trunkY, STATION.x, d.trunkY, d.color, !jam, t); }
+
+  // merge station
+  ctx.fillStyle = '#23252a'; ctx.fillRect(STATION.x, STATION.y, STATION.w, STATION.h);
+  ctx.strokeStyle = rgba(C.amber,.8); ctx.lineWidth = 2/s; ctx.strokeRect(STATION.x, STATION.y, STATION.w, STATION.h);
+  ctx.fillStyle = '#3a3d43'; for (const yy of [15.5,18.5,21.5]) ctx.fillRect(STATION.x+STATION.w, yy-.15, 31.6-(STATION.x+STATION.w), .3);
+  const ready = buffer.filter(b => !b.blockedBy), held = buffer.filter(b => b.blockedBy);
+  ready.slice(0, 24).forEach((b, i) => drawPR(STATION.x+.6+(i%3)*.9, STATION.y+1.5+Math.floor(i/3)*1, b.district, b.target, b.stack));
+  held.forEach((b, i) => { const x = STATION.x+.75+i*1.4, y = STATION.y+STATION.h-1.2; drawPR(x, y, b.district, b.target, b.stack, {color:'#4a4d54'}); lock(x+.42, y+.32, s); });
+  if (held.length && s > 11) text(STATION.x+STATION.w/2, STATION.y+STATION.h-2.3, 'HELD', Math.max(9, Math.min(11, s*.38)), C.amber, 'center', '600', HEAD);
+  if (s > 11) text(STATION.x+STATION.w/2, STATION.y+.5, 'MERGE', Math.max(9, Math.min(12, s*.42)), C.amber, 'center', '600', HEAD);
+
+  // rocket silo
+  ctx.fillStyle = '#3a3d43'; ctx.fillRect(47.1, SILO_C.y-.15, SILO.x-47.1, .3);
+  ctx.fillStyle = '#26282d'; ctx.fillRect(SILO.x, SILO.y, SILO.w, SILO.h);
+  ctx.strokeStyle = rgba(C.amber,.8); ctx.lineWidth = 2/s; ctx.strokeRect(SILO.x, SILO.y, SILO.w, SILO.h);
+  ctx.beginPath(); ctx.arc(SILO_C.x, SILO_C.y, 1.2, 0, Math.PI*2); ctx.fillStyle = '#0e0f12'; ctx.fill(); ctx.strokeStyle = '#5c6170'; ctx.lineWidth = 2/s; ctx.stroke();
+  for (let k=0;k<8;k++){ const a = k*Math.PI/4; ctx.fillStyle = '#5c6170'; ctx.fillRect(SILO_C.x+Math.cos(a)*1.45-.07, SILO_C.y+Math.sin(a)*1.45-.07, .14, .14); }
+  if (rocket.state === 'idle'){ ctx.beginPath(); ctx.arc(SILO_C.x, SILO_C.y, .32, 0, Math.PI*2); ctx.fillStyle = '#d9d4c8'; ctx.fill(); }
+  silo.cargo.forEach((c, i) => drawPR(SILO.x+.45+i*.6, SILO.y+.4, c.district, c.target, c.stack, {r:.18}));
+  if (s > 11) text(SILO_C.x, SILO.y+SILO.h+.45, 'ROCKET SILO', Math.max(8, Math.min(11, s*.38)), C.amber, 'center', '600', HEAD);
+
+  // landing pad, platform belts, PR block, branches
+  ctx.fillStyle = '#2a2d34'; ctx.fillRect(PAD.x, PAD.y, PAD.w, PAD.h); ctx.strokeStyle = '#8d93a3'; ctx.lineWidth = 1.5/s; ctx.strokeRect(PAD.x, PAD.y, PAD.w, PAD.h);
+  ctx.beginPath(); ctx.arc(PAD_C.x, PAD_C.y, 1, 0, Math.PI*2); ctx.strokeStyle = rgba(C.amber,.6); ctx.lineWidth = 2/s; ctx.stroke();
+  if (s > 11) text(PAD_C.x, PAD.y-.4, 'PAD', Math.max(8, Math.min(11, s*.38)), '#8d93a3', 'center', '600', HEAD);
+  belt(60.3, 18.5, 62, 18.5, C.main, true, t);
+  belt(62, 18.5, 62, 9.5, C.main, true, t); belt(62, 9.5, 65, 9.5, C.main, true, t);
+  belt(62, 18.5, 62, 27.5, C.cand, true, t); belt(62, 27.5, 65, 27.5, C.cand, true, t);
+  ctx.fillStyle = '#3a3d43'; ctx.fillRect(61.55, 18.05, .9, .9); ctx.strokeStyle = C.amber; ctx.lineWidth = 1.5/s; ctx.strokeRect(61.55, 18.05, .9, .9);
+  for (const [k, n] of Object.entries(NODES)){
+    const col = k === 'main' ? C.main : C.cand, cx = n.x+1.5, cy = n.y+1.5;
+    if (n.flash > 0){ shapePath('hex', cx, cy, 1.7 + (1-n.flash)*.8); ctx.strokeStyle = rgba(col, n.flash*.8); ctx.lineWidth = 3/s; ctx.stroke(); }
+    shapePath('hex', cx, cy, 1.7); ctx.fillStyle = '#25272c'; ctx.fill(); ctx.strokeStyle = col; ctx.lineWidth = 3/s; ctx.stroke();
+    text(cx, cy-.25, k === 'candidate' ? 'cand.' : k, Math.max(9, Math.min(13, s*.46)), col, 'center', '500');
+    text(cx, cy+.45, '+' + forge.merged[k], Math.max(9, Math.min(12, s*.42)), C.muted, 'center', '500');
+  }
+  const cs = WARE.pitch*.78;
+  cells.forEach((c, i) => {
+    const cx = WARE.x + (i % WARE.cols)*WARE.pitch, cy = WARE.y + Math.floor(i / WARE.cols)*WARE.pitch;
+    ctx.fillStyle = {review:'#4a4e56', green:'#3f9a4f', fail:'#a8443c', draft:'#2c2f35'}[c.state]; ctx.fillRect(cx, cy, cs, cs);
+    if (c.mine){ ctx.strokeStyle = D[c.mine].color; ctx.lineWidth = 2/s; ctx.strokeRect(cx, cy, cs, cs); }
+    if (c.stack && cells[i+1]?.stack && (i+1) % WARE.cols){ ctx.fillStyle = C.amber; ctx.fillRect(cx+cs, cy+cs/2-.04, WARE.pitch-cs, .08); }
+  });
+  if (s > 11) text(WARE.x, WARE.y-.45, `OPEN PRS · ${cells.length}`, Math.max(9, Math.min(12, s*.42)), '#c9c4b8', 'left', '600', HEAD);
+  for (const f of fitems){ if (f.d < 0) continue; const p = posAt(f.path, f.d); drawPR(p.x, p.y, f.district, f.branch, f.stack); }
+
+  // train
+  for (let i=0;i<3;i++){
+    const p = segAt(LOOP, mod(train.d - 1.6 - i*3.4, LOOP_LEN)), a = Math.atan2(p.dy, p.dx);
+    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(a);
+    ctx.fillStyle = i===0 ? '#4a3a1c' : '#33302a'; ctx.fillRect(-1.55, -.85, 3.1, 1.7);
+    ctx.strokeStyle = C.amber; ctx.lineWidth = 2/s; ctx.strokeRect(-1.55, -.85, 3.1, 1.7);
+    if (i===0){ ctx.fillStyle = C.amber; ctx.fillRect(.95, -.55, .45, 1.1); }
+    else train.cargo.slice((i-1)*3, i*3).forEach((c, j) => { ctx.save(); ctx.rotate(-a); const q = {x:Math.cos(a)*(-.9+j*.9), y:Math.sin(a)*(-.9+j*.9)}; drawPR(q.x, q.y, c.district, c.target, c.stack, {r:.22}); ctx.restore(); });
+    ctx.restore();
+  }
+
+  // hubs + chests
+  for (const h of Object.values(hubs)){
+    const d = D[h.district], cx = h.x+1.5, cy = h.y+1.5;
+    shapePath('hex', cx, cy, 1.7); ctx.fillStyle = '#25272c'; ctx.fill(); ctx.strokeStyle = d.color; ctx.lineWidth = 3/s; ctx.stroke();
+    shapePath('hex', cx, cy, 1.2); ctx.strokeStyle = rgba(d.color,.35); ctx.lineWidth = 1.5/s; ctx.stroke();
+    shapePath(d.shape, cx, cy, .45); ctx.fillStyle = d.color; ctx.fill();
+    if (h.mode === 'auto'){ ctx.save(); ctx.translate(cx, cy); if (!REDUCE) ctx.rotate(rt); ctx.strokeStyle = C.amber; ctx.lineWidth = 2/s; ctx.setLineDash([.3,.25]); ctx.beginPath(); ctx.arc(0,0,.85,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]); ctx.restore(); }
+    if (h.inv.length){ const bx = cx+1.35, by = cy-1.35, pulse = REDUCE ? 0 : Math.sin(rt*4)*.05;
+      ctx.beginPath(); ctx.arc(bx, by, .42+pulse, 0, Math.PI*2); ctx.fillStyle = C.amber; ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5/s; ctx.stroke();
+      text(bx, by+.02, String(h.inv.length), Math.max(9, s*.5), '#1c1408', 'center', '600'); }
+    if (s > 13) text(cx, cy+2.2, h.mode === 'auto' ? 'CONTROLLER · AUTO' : 'CONTROLLER', Math.max(8, Math.min(11, s*.38)), rgba(d.color,.8), 'center', '600', HEAD);
+    const c = chestRect(h);
+    ctx.fillStyle = '#3a342a'; ctx.fillRect(c.x, c.y, c.w, c.h); ctx.strokeStyle = rgba(d.color,.7); ctx.lineWidth = 1.5/s; ctx.strokeRect(c.x, c.y, c.w, c.h);
+    ctx.beginPath(); ctx.moveTo(c.x, c.y+.35); ctx.lineTo(c.x+c.w, c.y+.35); ctx.stroke();
+    ctx.fillStyle = rgba(d.color,.7); ctx.fillRect(c.x+c.w/2-.1, c.y+.25, .2, .22);
+    if (h.archive.length && s > 11) text(c.x+c.w/2, c.y+.78, String(h.archive.length), Math.max(8, Math.min(11, s*.38)), C.ink, 'center', '500');
+  }
+
+  for (const e of ents){ if (cursor?.move === e && cursor.drag) ctx.globalAlpha = .35; e.kind === 'array' ? drawArray(e, s, rt, t) : drawMachine(e, s, rt); ctx.globalAlpha = 1; }
+
+  // local items
+  for (const it of items){
+    const p = posAt(it.path, it.d), jam = it.state === 'jam';
+    drawPR(p.x, p.y, it.district, it.target, it.stack, jam ? {color:C.red} : {});
+    if (jam){ const pr = REDUCE ? .8 : .4+.6*Math.abs(Math.sin(rt*3));
+      ctx.beginPath(); ctx.arc(p.x, p.y, .65, 0, Math.PI*2); ctx.strokeStyle = rgba(C.red, pr); ctx.lineWidth = 2/s; ctx.stroke();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2/s; ctx.beginPath(); ctx.moveTo(p.x-.12,p.y-.12); ctx.lineTo(p.x+.12,p.y+.12); ctx.moveTo(p.x+.12,p.y-.12); ctx.lineTo(p.x-.12,p.y+.12); ctx.stroke(); }
+  }
+
+  // bots, packets, archive particles
+  for (const b of bots){
+    const d = D[b.district];
+    if (b.trail.length > 1){ ctx.beginPath(); b.trail.forEach((p,i) => ctx[i?'lineTo':'moveTo'](p.x,p.y)); ctx.strokeStyle = rgba(d.color,.3); ctx.lineWidth = 2/s; ctx.stroke(); }
+    shapePath('diamond', b.p.x, b.p.y, .2); ctx.fillStyle = d.color; ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 1/s; ctx.stroke();
+  }
+  for (const p of packets){
+    const col = p.type === 'instruct' ? C.main : p.type === 'ask' ? C.red : D[p.district].color;
+    ctx.fillStyle = rgba(col, .4);
+    for (let k = 1; k <= 4; k++){ const q = packetPos({...p, t: Math.max(0, p.t - k*.06)}); ctx.fillRect(q.x-.04, q.y-.04, .08, .08); }
+    const q = packetPos(p); envelope(q.x, q.y, p.type, D[p.district].color, s);
+  }
+  for (const p of particles){
+    const k = p.t/p.dur, e = 1-Math.pow(1-k,3), x = p.from.x+(p.to.x-p.from.x)*e, y = p.from.y+(p.to.y-p.from.y)*e - Math.sin(k*Math.PI)*1.5;
+    shapePath(D[p.district].shape, x, y, .5*(1-k*.6)); ctx.fillStyle = rgba(D[p.district].color, 1-k*.5); ctx.fill();
+  }
+
+  // rocket in flight
+  if (rocket.state === 'launch'){ const k = rocket.t; rocketShape(SILO_C.x, SILO_C.y - k*k*5.5, s, 1, true); }
+  if (rocket.state === 'land'){ const k = Math.min(1, rocket.t/1.8), e = 1 - Math.pow(1-k, 3); rocketShape(PAD_C.x, -6 + (PAD_C.y+.2 + 6)*e, s, .8, k < .92); }
+
+  if (sel){ const r = entRect(sel); if (r) brackets(r.x, r.y, r.w, r.h, C.amber); }
+
+  // placement ghost
+  if (cursor && mouse.in){
+    const fp = footprint(cursor), w = s2w(mouse.sx, mouse.sy), gx = Math.round(w.x - fp.w/2), gy = Math.round(w.y - fp.h/2), d = D[cursor.district];
+    const ok = canPlace(cursor.district, gx, gy, fp.w, fp.h, cursor.move), col = ok ? C.green : C.red;
+    ctx.globalAlpha = .8;
+    if (fp.w === 2) shapePath(d.shape, gx+1, gy+1, .85); else { ctx.beginPath(); ctx.rect(gx, gy, fp.w, fp.h); }
+    ctx.fillStyle = rgba(col,.18); ctx.fill(); ctx.strokeStyle = col; ctx.lineWidth = 2.5/s; ctx.stroke(); ctx.globalAlpha = 1;
+    if (ok){ const sx = fp.w === 2 ? gx+1 : gx+.5, sy = d.side==='down' ? gy+fp.h : gy; ctx.setLineDash([.25,.2]); ctx.strokeStyle = rgba(d.color,.7); ctx.lineWidth = 2/s;
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx, d.trunkY); ctx.stroke(); ctx.setLineDash([]); }
+  }
+}
+
+/* ---------- geometry + hit testing ---------- */
+const overlap = (a, b) => a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
+const inR = (w, r) => w.x>=r.x && w.x<=r.x+r.w && w.y>=r.y && w.y<=r.y+r.h;
+function canPlace(dist, x, y, w, h, ignore){
+  const d = D[dist];
+  if (x < d.x || x+w > d.x+d.w || y < d.minY || y+h > d.maxY) return false;
+  const hb = hubs[dist]; if (overlap({x,y,w,h}, {x:hb.x-1, y:hb.y-1, w:7, h:5})) return false;
+  for (const m of ents) if (m !== ignore && overlap({x,y,w,h}, {x:m.x, y:m.y, w:m.w + (m.queue?.length ? .6 : 0), h:m.h})) return false;
+  return true;
+}
+const WARE_RECT = {x:WARE.x-.2, y:WARE.y-.8, w:WARE.cols*WARE.pitch+.2, h:WARE.rows*WARE.pitch+.8};
+function entRect(e){
+  if (e.kind === 'machine' || e.kind === 'array') return isAlive(e.ref) ? {x:e.ref.x, y:e.ref.y, w:e.ref.w, h:e.ref.h} : null;
+  if (e.kind === 'hub') return {x:e.ref.x, y:e.ref.y, w:3, h:3};
+  if (e.kind === 'chest') return chestRect(e.ref);
+  if (e.kind === 'station') return {...STATION};
+  if (e.kind === 'silo') return {...SILO};
+  if (e.kind === 'platform') return {...WARE_RECT};
+  if (e.kind === 'item'){ if (!items.includes(e.ref)) return null; const p = posAt(e.ref.path, e.ref.d); return {x:p.x-.4, y:p.y-.4, w:.8, h:.8}; }
+  return null;
+}
+function hitTest(w, withPackets){
+  if (withPackets) for (const p of packets){ const q = packetPos(p); if (Math.hypot(q.x-w.x, q.y-w.y) < .45) return {kind:'packet', ref:p}; }
+  for (const it of items){ const p = posAt(it.path, it.d); if (Math.hypot(p.x-w.x, p.y-w.y) < .45) return {kind:'item', ref:it}; }
+  for (const m of ents) if (inR(w, {x:m.x, y:m.y, w:m.w, h:m.h})) return {kind:m.kind, ref:m};
+  for (const h of Object.values(hubs)){
+    if (inR(w, chestRect(h))) return {kind:'chest', ref:h};
+    if (Math.hypot(w.x-(h.x+1.5), w.y-(h.y+1.5)) < 1.75) return {kind:'hub', ref:h};
+  }
+  if (inR(w, {x:STATION.x, y:STATION.y, w:STATION.w+1.5, h:STATION.h})) return {kind:'station'};
+  if (inR(w, SILO)) return {kind:'silo'};
+  if (inR(w, PLATFORM)) return {kind:'platform'};
+  return null;
+}
+
+/* ---------- DOM helpers ---------- */
+const ICON = {
+  bag: c => `<svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="5" width="12" height="9" fill="#2a2c31" stroke="${c}" stroke-width="1.4"/><path d="M5.5 5V3.5a2.5 2.5 0 0 1 5 0V5" fill="none" stroke="${c}" stroke-width="1.4"/><path d="M2 8.5h12" stroke="${c}" stroke-width="1"/></svg>`,
+  circle: c => `<svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="${c}" stroke-width="2"/><circle cx="8" cy="8" r="2.6" fill="${c}"/></svg>`,
+  square: c => `<svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="12" height="12" fill="none" stroke="${c}" stroke-width="2"/><rect x="5.5" y="5.5" width="5" height="5" fill="${c}"/></svg>`,
+  hex: c => `<svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><polygon points="8,1 14.1,4.5 14.1,11.5 8,15 1.9,11.5 1.9,4.5" fill="none" stroke="${c}" stroke-width="1.8"/><circle cx="8" cy="8" r="2.4" fill="${c}"/></svg>`,
+  diamond: c => `<svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><polygon points="8,3 13,8 8,13 3,8" fill="${c}"/></svg>`,
+  array: c => `<svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="3" width="14" height="10" fill="none" stroke="${c}" stroke-width="1.4"/><rect x="2.5" y="5" width="2.5" height="6" fill="${c}" opacity=".5"/><circle cx="7" cy="8" r="1.5" fill="${c}"/><circle cx="10" cy="8" r="1.5" fill="${c}"/><circle cx="13" cy="8" r="1.5" fill="${c}"/></svg>`,
+  chain: c => `<svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="8" r="3.4" fill="none" stroke="${c}" stroke-width="1.8"/><circle cx="5" cy="8" r="1.4" fill="${c}"/><path d="M12.5 4v8" stroke="${c}" stroke-width="1" opacity=".7"/><circle cx="12.5" cy="4" r="1.3" fill="${c}" opacity=".8"/><circle cx="12.5" cy="8" r="1.3" fill="${c}" opacity=".8"/><circle cx="12.5" cy="12" r="1.3" fill="${c}" opacity=".8"/></svg>`,
+  msg: c => `<svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="4" width="12" height="8.5" fill="${c}" stroke="#000"/><path d="M2 4l6 5 6-5" fill="none" stroke="#000" stroke-width="1.2"/></svg>`,
+  train: c => `<svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="1.5" width="8" height="13" fill="none" stroke="${c}" stroke-width="1.8"/><rect x="5.5" y="10" width="5" height="2.5" fill="${c}"/></svg>`,
+  rocket: c => `<svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1c2.5 2 3 5 2.6 9H5.4C5 6 5.5 3 8 1z" fill="#d9d4c8" stroke="#000" stroke-width=".8"/><path d="M6.5 11l1.5 4 1.5-4z" fill="${c}"/></svg>`,
+  belt: c => `<svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="5" width="14" height="6" fill="#2b2e34" stroke="#000"/><circle cx="5" cy="8" r="2" fill="${C.cui}" stroke="${C.main}" stroke-width="1"/><circle cx="11" cy="8" r="2" fill="${C.ds}" stroke="${C.cand}" stroke-width="1"/></svg>`,
+  chest: c => `<svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="4" width="12" height="9" fill="#3a342a" stroke="${c}" stroke-width="1.4"/><path d="M2 7.5h12" stroke="${c}" stroke-width="1.2"/><rect x="7" y="6.5" width="2" height="2.5" fill="${c}"/></svg>`,
+  remote: c => `<svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1h10l2 2v10l-2 2H3l-2-2V3z" fill="#1a1c22" stroke="${c}" stroke-width="1.3"/><rect x="5" y="5" width="2.4" height="2.4" fill="${c}"/><rect x="8.6" y="5" width="2.4" height="2.4" fill="#3f9a4f"/><rect x="5" y="8.6" width="2.4" height="2.4" fill="#a8443c"/><rect x="8.6" y="8.6" width="2.4" height="2.4" fill="${c}"/></svg>`,
+  warn: c => `<svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5L22.5 21h-21z" fill="${c}"/><path d="M12 9v6M12 17.2v1.6" stroke="#fff" stroke-width="2.4"/></svg>`,
+  jam: c => `<svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="8" width="22" height="8" fill="#2b2e34" stroke="#000"/><circle cx="12" cy="12" r="5" fill="${c}" stroke="#000"/><path d="M9.8 9.8l4.4 4.4M14.2 9.8l-4.4 4.4" stroke="#fff" stroke-width="1.8"/></svg>`,
+  lock: c => `<svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" fill="${c}"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="${c}" stroke-width="2.4"/><circle cx="12" cy="16" r="1.6" fill="#1c1408"/></svg>`,
+  inbox: c => `<svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><polygon points="12,2 21,7 21,17 12,22 3,17 3,7" fill="none" stroke="${c}" stroke-width="2.2"/><path d="M12 7v8M8.5 11.5L12 15l3.5-3.5" fill="none" stroke="${c}" stroke-width="2.2"/></svg>`,
+  check: c => `<svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" fill="none" stroke="${c}" stroke-width="2"/><path d="M7.5 12.5l3 3 6-7" fill="none" stroke="${c}" stroke-width="2.4"/></svg>`,
+};
+const shapeIcon = (dist, c) => ICON[D[dist].shape](c || D[dist].color);
+const propIcon = p => p.kind === 'array' ? ICON.array(D[p.district].color) : p.kind === 'chain' ? ICON.chain(D[p.district].color) : shapeIcon(p.district);
+const propTag = p => p.kind === 'array' ? '×' + p.tickets.length : p.kind === 'chain' ? '→' + p.tickets.length : '';
+const monoChip = (e, big) => `<span class="chip${big?' big':''}" style="color:${D[e.district].color};border-color:${D[e.district].color}">${esc(e.mono || '?')}</span>`;
+const tidText = e => e.tid || 'no ticket';
+const propDesc = p => p.kind === 'array' ? `Array of ${p.tickets.length} tickets` : p.kind === 'chain' ? `Chain of ${p.tickets.length} tickets, in order` : 'One session';
+const tgtDot = t => t === 'both' ? `<span class="tgt" style="background:linear-gradient(90deg,${C.main} 50%,${C.cand} 50%)"></span>` : `<span class="tgt" style="background:${t==='candidate'?C.cand:C.main}"></span>`;
+const legendIcons = {hex:ICON.hex(C.ds), array:ICON.array(C.cui), bot:ICON.diamond(C.cui), msg:ICON.msg(C.ds), belt:ICON.belt(C.cui), train:ICON.rocket(C.amber), chest:ICON.chest(C.ds)};
+for (const [k, v] of Object.entries(legendIcons)){ const el = $('#lg-'+k); if (el) el.innerHTML = v; }
+
+function toast(html){
+  const el = document.createElement('div'); el.className = 'toast'; el.innerHTML = html;
+  const box = $('#toasts'); box.prepend(el); while (box.children.length > 3) box.lastChild.remove();
+  setTimeout(() => el.remove(), 4200);
+}
+const fmtTok = n => n >= 1e6 ? (n/1e6).toFixed(2)+'M' : n >= 1000 ? (n/1000).toFixed(1)+'k' : Math.round(n)+'';
+const fmtT = s => { s = Math.max(0, Math.ceil(s)); return s >= 60 ? `${Math.floor(s/60)}m ${s%60}s` : `${s}s`; };
+const trainStatus = () => ({depot:`in ${fmtT(train.next)}`, toLocal:'arriving', loading:'loading', toSilo:'to the silo', unloading:'unloading', toDepot:'returning'}[train.state]);
+const cellCount = st => cells.filter(c => c.state === st).length;
+const doneable = e => e.state === 'done' && !(e.queue?.length) && !items.some(i => i.machine === e.id && i.state === 'jam');
+
+/* ---------- overview ---------- */
+let ovSig = '';
+function renderOverview(){
+  const rows = Object.values(D).map(d => {
+    const ms = ents.filter(m => m.district === d.id);
+    return {d, run: ms.filter(m => m.state==='working').length, wait: ms.filter(m => m.state==='needs').length,
+      done: ms.filter(m => m.state==='done' || m.state==='handoff').length, bots: bots.filter(b => b.district===d.id).length, merged: sim.merged[d.id],
+      jam: items.some(i => i.district===d.id && i.state==='jam'), auto: hubs[d.id].mode === 'auto'};
+  });
+  const fr = [cells.length, cellCount('review'), cellCount('fail'), forge.merged.main, forge.merged.candidate];
+  const sig = JSON.stringify(rows.map(r => [r.run,r.wait,r.done,r.bots,r.merged,r.jam,r.auto])) + fr + sim.speed;
+  if (sig !== ovSig){
+    ovSig = sig;
+    $('#ovList').innerHTML = rows.map(r => `
+      <button class="ov-row" data-act="goto" data-d="${r.d.id}" aria-label="Go to ${r.d.name}">
+        <span class="ov-name">${ICON.hex(r.d.color)}${esc(r.d.name)}${r.jam?'<span class="jamtag">Belt jammed</span>':r.auto?'<span class="jamtag" style="color:var(--amber);background:#3a2e17;box-shadow:inset 0 0 0 1px var(--amber)">Auto</span>':''}</span>
+        <span class="ov-stats">
+          <span class="st"><b>${r.run}</b><small>Working</small></span>
+          <span class="st ${r.wait?'alert':''}"><b>${r.wait}</b><small>Need you</small></span>
+          <span class="st"><b>${r.done}</b><small>Done</small></span>
+          <span class="st"><b>${r.bots}</b><small>Bots</small></span>
+          <span class="st"><b>${r.merged}</b><small>Merged</small></span>
+        </span>
+      </button>`).join('') + `
+      <button class="ov-row" data-act="station"><span class="ov-train" style="padding:0">${ICON.train(C.amber)} Merge train<span class="mono" data-live="eta"></span></span></button>
+      <button class="ov-row" data-act="platform" aria-label="Go to the remote">
+        <span class="ov-name">${ICON.remote('#c9c4b8')}${esc(PLATFORM.name)}</span>
+        <span class="ov-stats">
+          <span class="st"><b>${fr[0]}</b><small>Open</small></span>
+          <span class="st"><b>${fr[1]}</b><small>Review</small></span>
+          <span class="st"><b>${fr[2]}</b><small>Failing</small></span>
+          <span class="st"><b>${fr[3]}</b><small>→ main</small></span>
+          <span class="st"><b>${fr[4]}</b><small>→ cand.</small></span>
+        </span>
+      </button>`;
+    $('#ctl').innerHTML = `
+      <button class="btn ${sim.speed===0?'on':''}" data-act="speed" data-v="0">Pause</button>
+      <button class="btn ${sim.speed===1?'on':''}" data-act="speed" data-v="1">1×</button>
+      <button class="btn ${sim.speed===4?'on':''}" data-act="speed" data-v="4">4×</button>
+      <span class="sp"></span>
+      <button class="btn" data-act="zoom" data-v="-1" aria-label="Zoom out">−</button>
+      <button class="btn" data-act="zoom" data-v="1" aria-label="Zoom in">+</button>
+      <button class="btn" data-act="fit">Fit</button>`;
+  }
+  const eta = document.querySelector('[data-live=eta]');
+  if (eta){ const held = buffer.filter(b => b.blockedBy).length, rdy = buffer.length - held;
+    eta.textContent = `${rdy} ready${held ? ` · ${held} held` : ''} · ${rocket.state !== 'idle' ? 'rocket in flight' : trainStatus()}`; }
+}
+
+/* ---------- hotbar + hint ---------- */
+let hbSig = '';
+const pins = Array(10).fill(null);
+function hotbarSlots(){ return pins.map(id => id == null ? null : findProp(id) || null); }
+function slotHtml(p, key, hb){
+  return `<button class="slot ${cursor?.prop===p?'sel':''}" data-act="pickp" data-id="${p.id}" ${hb!=null?`data-hb="${hb}"`:''} aria-label="${esc(p.ticket)}: ${esc(propDesc(p))}" title="${esc(p.ticket)} (${esc(tidText(p))}) · ${esc(propDesc(p))}\n${esc(p.title)}\nDrag it into its area to approve it.">
+    <span class="bgic">${propIcon(p)}</span><span class="mg" style="color:${D[p.district].color}">${esc(p.mono)}</span>${key!=null?`<span class="kn">${key}</span>`:''}${propTag(p)?`<span class="tk">${esc(propTag(p))}</span>`:''}</button>`;
+}
+function renderHotbar(){
+  const slots = hotbarSlots();
+  slots.forEach((p, i) => { if (!p) pins[i] = null; });
+  const sig = slots.map(p => p?.id).join(',') + '|' + (cursor?.prop?.id || '') + invOpen;
+  if (sig === hbSig) return; hbSig = sig;
+  let html = `<button class="slot invbtn ${invOpen?'sel':''}" data-act="inv" title="Inventory (E): every proposal from every controller" aria-label="Open inventory">${ICON.bag('#c9c4b8')}<span class="kn">E</span>${invCount()?`<span class="tk">${invCount()}</span>`:''}</button>`;
+  for (let i=0;i<10;i++){ const p = slots[i], key = i < 9 ? i+1 : 0; html += p ? slotHtml(p, key, i) : `<span class="slot empty" data-hb="${i}" title="Empty. Drag a proposal here from the inventory to keep it at hand."><span class="kn">${key}</span></span>`; }
+  $('#hotbar').innerHTML = html;
+}
+function renderHint(){
+  const h = $('#hint');
+  if (!cursor){ h.hidden = true; return; }
+  h.hidden = false;
+  const d = D[cursor.district], p = cursor.prop;
+  h.innerHTML = p
+    ? `Holding <b>${esc(p.ticket)}</b> (${esc(propDesc(p).toLowerCase())}) · drop it inside <b>${esc(d.short)}</b> to approve · <b>Esc</b> to put back`
+    : cursor.restore ? `Restoring <b>${esc(cursor.restore.ticket)}</b> · drop it on a free spot in <b>${esc(d.short)}</b> · <b>Esc</b> to cancel`
+    : `Moving <b>${esc(cursor.move.ticket)}</b> · drop it on a free spot in <b>${esc(d.short)}</b>${cursor.drag ? '' : ' · <b>Esc</b> to cancel'}`;
+}
+
+/* ---------- inventory (E) ---------- */
+let invSig = '';
+function renderInv(){
+  const box = $('#inv');
+  if (!invOpen){ box.hidden = true; invSig = ''; return; }
+  const sig = Object.values(hubs).map(h => h.inv.map(p => p.id).join('.') + h.mode).join('|') + '|' + pins.join(',') + (cursor?.prop?.id || '');
+  if (sig === invSig) return; invSig = sig; box.hidden = false;
+  box.innerHTML = `<div class="ttl"><span>Inventory</span><span class="ridge"></span><button class="xbtn" data-act="inv" aria-label="Close inventory">×</button></div>
+    <div class="inset" style="display:grid;gap:12px">
+      ${Object.values(hubs).map(h => { const d = D[h.district]; let slots = '';
+        for (let i = 0; i < 10; i++){ const p = h.inv[i]; slots += p ? slotHtml(p) : '<span class="slot empty"></span>'; }
+        return `<section style="display:grid;gap:6px">
+          <div class="ov-name" style="font-size:12.5px">${ICON.hex(d.color)}${esc(d.name)}<span class="muted" style="margin-left:auto;font-family:var(--f-body);font-weight:400">${h.mode === 'auto' ? 'Auto: the controller places these' : h.inv.length + ' to approve'}</span></div>
+          <div class="inv" style="grid-template-columns:repeat(10,minmax(0,1fr))">${slots}</div>
+          ${h.inv.length ? `<ul class="log">${h.inv.map(p => `<li class="row">${monoChip(p)}<span>${esc(p.ticket)} <span class="muted">· ${esc(tidText(p))} · ${esc(propDesc(p).toLowerCase())}</span></span><button class="btn mini" data-act="pin" data-id="${p.id}" style="flex:none" ${pins.includes(p.id)?'disabled':''}>${pins.includes(p.id)?'Pinned':'Pin'}</button></li>`).join('')}</ul>` : ''}
+        </section>`; }).join('')}
+      <p class="note">New proposals land here, never on the hotbar. Drag one onto the map to approve it, or onto the hotbar to keep it at hand. Each one has a short name and two letters you will see on the map.</p>
+    </div>`;
+}
+
+/* ---------- alerts ---------- */
+const alertIdx = {};
+let alSig = '';
+function alertList(){
+  const needs = ents.filter(m => m.state==='needs'), jams = items.filter(i => i.state==='jam'), held = buffer.filter(b => b.blockedBy);
+  const inv = Object.values(hubs).filter(h => h.inv.length && h.mode === 'manual'), done = ents.filter(doneable);
+  return [
+    {k:'needs', cls:'red', icon:ICON.warn(C.red), n:needs.length, label:'Waiting on you', ents:needs.map(m => ({kind:m.kind, ref:m}))},
+    {k:'jam', cls:'red', icon:ICON.jam(C.red), n:jams.length, label:'CI failed, belt jammed', ents:jams.map(i => ({kind:'item', ref:i}))},
+    {k:'held', cls:'', icon:ICON.lock(C.amber), n:held.length, label:'Stack held: base PR not merged', ents:[{kind:'station'}]},
+    {k:'inv', cls:'', icon:ICON.inbox(C.amber), n:inv.reduce((a,h) => a+h.inv.length, 0), label:'Sessions to approve (opens the inventory)', ents:[]},
+    {k:'done', cls:'', icon:ICON.check(C.muted), n:done.length, label:'Done, ready to archive', ents:done.map(m => ({kind:m.kind, ref:m}))},
+  ].filter(a => a.n);
+}
+function renderAlerts(){
+  const al = alertList(), sig = al.map(a => a.k+a.n).join();
+  if (sig === alSig) return; alSig = sig;
+  $('#alerts').innerHTML = al.map(a => `<button class="al ${a.cls}" data-act="alert" data-k="${a.k}" aria-label="${a.label}: ${a.n}" title="${a.label}. Click to jump there; click again for the next one.">${a.icon}<span class="n">${a.n}</span></button>`).join('');
+}
+function cycleAlert(k){
+  if (k === 'inv'){ invOpen = true; hbSig = ''; renderInv(); return; }
+  const a = alertList().find(x => x.k === k); if (!a) return;
+  alertIdx[k] = ((alertIdx[k] ?? -1) + 1) % a.ents.length;
+  select(a.ents[alertIdx[k]], true);
+}
+
+/* ---------- inspector ---------- */
+let entSig = '';
+function select(e, fly){
+  sel = e; entSig = '';
+  if (e && fly){ const r = entRect(e); if (r) focus(r.x + r.w/2 + (vw > 760 ? 3 : 0), r.y + r.h/2 + (vw <= 760 ? 4 : 0)); }
+  renderEntity();
+}
+function ttl(label){ return `<div class="ttl"><span>${esc(label)}</span><span class="ridge"></span><button class="xbtn" data-act="close" aria-label="Close">×</button></div>`; }
+function logHtml(log, n = 5){ return `<ul class="log">${log.slice(-n).map(l => `<li class="${l.you?'you':l.bad?'bad':l.msg?'msg':''}">${esc(l.t)}</li>`).join('')}</ul>`; }
+function renderEntity(){
+  const box = $('#entity');
+  if (sel && !entRect(sel)) sel = null;
+  if (!sel){ box.hidden = true; entSig = ''; return; }
+  let sig, html;
+  if (sel.kind === 'machine'){
+    const m = sel.ref, d = D[m.district], jam = items.find(i => i.machine===m.id && i.state==='jam');
+    sig = `m${m.id}|${m.ticket}|${m.state}|${m.log.length}|${!!jam}|${m.x},${m.y}`;
+    if (sig !== entSig){
+      const stLabel = {working: m.fixing ? 'Fixing CI' : 'Working', needs:'Waiting on you', done: jam ? 'CI failed' : m.queue.length ? 'Done · next starts soon' : 'Done', handoff:'Writing handoff'}[m.state];
+      html = ttl('Session') + `<div class="inset">
+        <div class="ent-head">${monoChip(m, true)}<div><div class="ent-title">${esc(m.ticket)}</div><div class="ent-sub">${esc(m.title)}<br>${esc(tidText(m))} · ${esc(d.short)}${m.chainName ? ' · chain: ' + esc(m.chainName) : ''}</div></div></div>
+        <span class="state ${jam?'jam':m.state==='handoff'?'working':m.state}">${stLabel}</span>`;
+      if (m.state === 'needs') html += `<div class="ask"><p>${esc(m.q.q)}</p><div class="row">
+          <button class="btn go" data-act="answer" data-v="0">${esc(m.q.o[0])}</button>
+          <button class="btn" data-act="answer" data-v="1">${esc(m.q.o[1])}</button>
+          <button class="btn" data-act="open">Reply in session…</button></div></div>`;
+      if (m.state !== 'done' && m.state !== 'handoff') html += `<div class="bar"><i data-live="prog"></i></div>`;
+      html += `<dl class="kv"><dt>Tokens</dt><dd data-live="tok"></dd><dt>Running for</dt><dd data-live="age"></dd>
+        <dt>Targets</dt><dd>${tgtDot(m.target)}${TGT[m.target].label}</dd>
+        ${m.stack>1?`<dt>Stack</dt><dd>${m.stack} PRs</dd>`:''}${m.pr?`<dt>Pull request</dt><dd>#${m.pr}</dd>`:''}<dt>Bots helping now</dt><dd data-live="mb"></dd></dl>`;
+      if (m.queue.length) html += `<div><div class="lbl">Next in this chain</div><ul class="log">${m.queue.map(q => `<li>${esc(q.ticket)} · ${esc(q.title)}</li>`).join('')}</ul><p class="note" style="margin-top:6px">Each ticket starts here once the previous PR passes CI. The finished session goes to the chest with a handoff the next one reads.</p></div>`;
+      if (jam) html += `<div class="ask"><p><b>PR #${jam.pr}</b> failed CI: ${esc(jam.ci)}. Items behind it on the belt are stuck.</p><div class="row"><button class="btn go" data-act="sendback" data-id="${jam.id}">Send back to session</button></div></div>`;
+      html += `<div><div class="lbl">Recent activity and messages</div>${logHtml(m.log, 6)}</div>
+        <div class="acts">${doneable(m) ? `<button class="btn go" data-act="handoff">Write handoff, then archive</button><button class="btn" data-act="archive">Archive</button>` : ''}
+          <button class="btn" data-act="move">Move</button><button class="btn" data-act="open">Open session</button></div></div>`;
+    }
+  } else if (sel.kind === 'array'){
+    const a = sel.ref, d = D[a.district], need = a.cells.find(c => c.state === 'needs');
+    sig = `a${a.id}|${a.state}|${a.cols}|${a.done}|${a.cells.map(c=>(c.t?.ticket||'')+(c.state||'')).join()}`;
+    if (sig !== entSig){
+      const stLabel = {working:'Working', needs:'Waiting on you', done:'Done', handoff:'Writing handoff'}[a.state];
+      html = ttl('Batch array') + `<div class="inset">
+        <div class="ent-head">${monoChip(a, true)}<div><div class="ent-title">${esc(a.ticket)}</div><div class="ent-sub">${esc(a.title)}<br>${a.total} tickets · ${esc(tidText(a))} · ${esc(d.short)}</div></div></div>
+        <span class="state ${a.state==='handoff'?'working':a.state}">${stLabel}</span>`;
+      if (need) html += `<div class="ask"><p><b>${esc(need.t.ticket)}</b>: ${esc(need.q.q)}</p><div class="row">
+          <button class="btn go" data-act="answer" data-v="0">${esc(need.q.o[0])}</button><button class="btn" data-act="answer" data-v="1">${esc(need.q.o[1])}</button></div>
+          <p class="note">The other cells keep going while this one waits.</p></div>`;
+      html += `<div class="bar"><i data-live="aprog"></i></div>
+        <dl class="kv"><dt>Done</dt><dd>${a.done} / ${a.total}</dd><dt>In the queue</dt><dd>${a.queue.length}</dd><dt>Running now</dt><dd>${a.cells.filter(c=>c.t).map(c=>esc(c.t.ticket)).join(', ') || '—'}</dd><dt>Tokens</dt><dd data-live="tok"></dd></dl>
+        <div><div class="lbl">Sessions in parallel</div>
+          <div class="stepper" style="margin-top:6px"><button class="btn mini" data-act="cols" data-v="-1" aria-label="Fewer cells">−</button><b>${a.cols}</b><button class="btn mini" data-act="cols" data-v="1" aria-label="More cells">+</button>
+          <span class="note" style="margin-left:6px">More cells finish sooner and burn tokens faster.</span></div></div>
+        <p class="note">One queue, ${a.cols} session${a.cols>1?'s':''} at a time. A cell takes the next ticket when it ships. You only hear from the array when a cell asks something or a PR fails.</p>
+        <div><div class="lbl">Recent activity</div>${logHtml(a.log)}</div>
+        <div class="acts">${doneable(a) ? `<button class="btn go" data-act="handoff">Write handoff, then archive</button><button class="btn" data-act="archive">Archive</button>` : ''}
+          <button class="btn" data-act="move">Move</button></div></div>`;
+    }
+  } else if (sel.kind === 'hub'){
+    const h = sel.ref, d = D[h.district], ms = ents.filter(m => m.district===h.district), doneN = ms.filter(doneable).length;
+    sig = `h${h.district}|${h.inv.map(p=>p.id)}|${ms.length}|${doneN}|${h.mode}|${h.msgs.length}|${h.msgs[0]?.t}|${cursor?.prop?.id||''}`;
+    if (sig !== entSig){
+      let slots = ''; for (let i=0;i<10;i++){ const p = h.inv[i]; slots += p ? slotHtml(p) : `<span class="slot empty"></span>`; }
+      html = ttl('Controller') + `<div class="inset">
+        <div class="ent-head">${ICON.hex(d.color)}<div><div class="ent-title">${esc(d.name)}</div><div class="ent-sub">Controller agent · ${ms.length} placed</div></div></div>
+        <div><div class="lbl">How new work gets placed</div>
+          <div class="seg" style="margin-top:6px"><button class="btn ${h.mode==='manual'?'on':''}" data-act="mode" data-v="manual">Manual</button><button class="btn ${h.mode==='auto'?'on':''}" data-act="mode" data-v="auto">Auto</button></div>
+          <p class="note" style="margin-top:6px">${h.mode==='manual' ? 'You place every proposal yourself. Nothing starts until you drop it on the map.' : 'The controller places proposals itself, next to the last spot you used. Switch back any time.'}</p></div>
+        <div><div class="lbl">Proposals</div></div>
+        <div class="inv">${slots}</div>
+        ${h.inv.length ? `<ul class="log">${h.inv.map(p => `<li>${esc(p.ticket)} <span class="muted">· ${esc(tidText(p))} · ${esc(propDesc(p).toLowerCase())}</span></li>`).join('')}</ul>` : '<p class="note">Nothing waiting.</p>'}
+        <div><div class="lbl">Messages</div>${h.msgs.length ? logHtml(h.msgs.slice().reverse(), 5) : '<p class="note">None yet.</p>'}</div>
+        <dl class="kv"><dt>Bots out now</dt><dd data-live="hb"></dd><dt>Bots today</dt><dd data-live="ht"></dd><dt>In the chest</dt><dd>${h.archive.length}</dd></dl>
+        <div class="acts">${doneN ? `<button class="btn go" data-act="cleanup" data-d="${h.district}">Clean up done (${doneN})</button>` : ''}<button class="btn" data-act="open">Open controller</button></div></div>`;
+    }
+  } else if (sel.kind === 'chest'){
+    const h = sel.ref, d = D[h.district];
+    sig = `c${h.district}|${h.archive.map(a=>a.id)}`;
+    if (sig !== entSig){
+      html = ttl('Archive') + `<div class="inset">
+        <div class="ent-head">${ICON.chest(d.color)}<div><div class="ent-title">${esc(d.name)}</div><div class="ent-sub">Archived sessions · next to their controller</div></div></div>
+        ${h.archive.length ? `<ul class="log">${h.archive.map(a => `<li class="row">${a.mono ? monoChip(a) : ''}<span>${esc(a.ticket)} <span class="muted">· ${esc(tidText(a))}${a.pr?` · #${a.pr}`:''}</span></span>${a.handoff?'<span class="tag" style="flex:none">Handoff</span>':''}${a.kind==='array'?'':`<button class="btn mini" data-act="restore" data-id="${a.id}" style="flex:none">Restore</button>`}</li>`).join('')}</ul>` : '<p class="note">Empty.</p>'}
+        <p class="note">Sessions land here when you archive them, or when a chain moves on to its next ticket. Restore puts one back on the map so you can talk to it again.</p></div>`;
+    }
+  } else if (sel.kind === 'station'){
+    sig = `s|${buffer.map(b=>b.pr+(b.blockedBy?'h':''))}|${train.state}|${sim.merged.ds}|${sim.merged.cui}`;
+    if (sig !== entSig){
+      const held = buffer.filter(b => b.blockedBy), rdy = buffer.filter(b => !b.blockedBy);
+      html = ttl('Merge station') + `<div class="inset">
+        <div class="ent-head">${ICON.train(C.amber)}<div><div class="ent-title">PR merge schedule</div><div class="ent-sub">Scheduled task · every 2 h (every 40 s in this demo)</div></div></div>
+        <dl class="kv"><dt>Train</dt><dd data-live="eta2"></dd><dt>Ready to merge</dt><dd>${rdy.length}</dd><dt>Held</dt><dd>${held.length}</dd>
+          <dt>Merged today · ${esc(D.ds.short)}</dt><dd>${sim.merged.ds}</dd><dt>Merged today · ${esc(D.cui.short)}</dt><dd>${sim.merged.cui}</dd></dl>
+        ${rdy.length ? `<div><div class="lbl">Ready</div><ul class="log">${rdy.slice(0,8).map(b => `<li>${tgtDot(b.target)}${esc(prLabel(b))} · ${esc(b.ticket)} → ${TGT[b.target].label}</li>`).join('')}${rdy.length>8?`<li>and ${rdy.length-8} more</li>`:''}</ul></div>` : ''}
+        ${held.map(b => `<div class="ask" style="background:#2b2416;box-shadow:inset 0 0 0 1px #6b5226"><p><b>${esc(b.ticket)}</b>: stack of ${b.stack} PRs from #${b.pr}. Its base, <b>PR #${b.blockedBy}</b>, is still waiting for review, so the train leaves this stack behind.</p><div class="row"><button class="btn" data-act="open">Open base PR</button></div></div>`).join('')}
+        <p class="note">Trains are local scheduled tasks. This one brings ready PRs to the rocket silo, which sends them to the remote.</p>
+        <div class="acts"><button class="btn" data-act="mergenow" ${train.state!=='depot'?'disabled':''}>Run now</button></div></div>`;
+    }
+  } else if (sel.kind === 'silo'){
+    sig = `r|${rocket.state}|${silo.cargo.length}|${silo.launches}`;
+    if (sig !== entSig){
+      html = ttl('Rocket silo') + `<div class="inset">
+        <div class="ent-head">${ICON.rocket(C.amber)}<div><div class="ent-title">Push to remote</div><div class="ent-sub">Everything that leaves your machine goes through here</div></div></div>
+        <dl class="kv"><dt>Rocket</dt><dd>${rocket.state === 'idle' ? 'on the pad' : 'in flight'}</dd><dt>Waiting to launch</dt><dd>${silo.cargo.length}</dd><dt>Launches today</dt><dd>${silo.launches}</dd></dl>
+        <p class="note">Each launch is one push to Forgejo. The rocket lands on the space platform, where PRs merge into their target branch.</p></div>`;
+    }
+  } else if (sel.kind === 'platform'){
+    sig = `f|${cells.map(c=>c.state[0]).join('')}|${forge.merged.main}|${forge.merged.candidate}`;
+    if (sig !== entSig){
+      const mine = cells.filter(c => c.mine), stacks = cells.filter(c => c.stack).length;
+      html = ttl('Space platform') + `<div class="inset">
+        <div class="ent-head">${ICON.remote('#c9c4b8')}<div><div class="ent-title">Forgejo</div><div class="ent-sub">The remote: open PRs and branches</div></div></div>
+        <dl class="kv"><dt>Open</dt><dd>${cells.length}</dd><dt>Waiting for review</dt><dd>${cellCount('review')}</dd><dt>Green, not merged</dt><dd>${cellCount('green')}</dd>
+          <dt>Failing</dt><dd>${cellCount('fail')}</dd><dt>Draft</dt><dd>${cellCount('draft')}</dd><dt>From your sessions</dt><dd>${mine.length}</dd><dt>In stacks</dt><dd>${stacks}</dd>
+          <dt>${tgtDot('main')}Merged today to main</dt><dd>${forge.merged.main}</dd><dt>${tgtDot('candidate')}Merged today to candidate</dt><dd>${forge.merged.candidate}</dd></dl>
+        <p class="note">Each square is one open PR, so 80 stay readable. Outlined squares come from your sessions; amber links join stacked PRs.</p></div>`;
+    }
+  } else if (sel.kind === 'item'){
+    const it = sel.ref; sig = `i${it.id}|${it.state}`;
+    if (sig !== entSig){
+      html = ttl('PR #'+it.pr) + `<div class="inset">
+        <div class="ent-head">${shapeIcon(it.district, it.state==='jam'?C.red:null)}<div><div class="ent-title">${esc(it.ticket)}</div><div class="ent-sub">${esc(D[it.district].name)} · on the belt</div></div></div>
+        <span class="state ${it.state==='jam'?'jam':'working'}">${it.state==='jam'?'CI failed':'Moving to merge'}</span>
+        <dl class="kv"><dt>Targets</dt><dd>${tgtDot(it.target)}${TGT[it.target].label}</dd>${it.stack>1?`<dt>Stack</dt><dd>${it.stack} PRs</dd>`:''}</dl>
+        ${it.state==='jam' ? `<div class="ask"><p>${esc(it.ci)}</p><div class="row"><button class="btn go" data-act="sendback" data-id="${it.id}">Send back to session</button></div></div>` : `<p class="note">CI is green. It waits at the merge station for the next train.</p>`}
+      </div>`;
+    }
+  }
+  if (sig !== entSig){ box.innerHTML = html; entSig = sig; box.hidden = false; }
+  const L = k => box.querySelector(`[data-live=${k}]`);
+  if (sel.kind === 'machine'){ const m = sel.ref;
+    if (L('prog')) L('prog').style.width = `calc(${Math.min(1,m.progress)*100}% - 2px)`;
+    if (L('tok')) L('tok').textContent = fmtTok(m.tokens);
+    if (L('age')) L('age').textContent = fmtT(12*60 + (sim.t - m.born)*6);
+    if (L('mb')) L('mb').textContent = bots.filter(b => b.m === m).length; }
+  if (sel.kind === 'array'){ const a = sel.ref;
+    if (L('aprog')) L('aprog').style.width = `calc(${a.done/a.total*100}% - 2px)`;
+    if (L('tok')) L('tok').textContent = fmtTok(a.tokens); }
+  if (sel.kind === 'hub'){ const h = sel.ref;
+    if (L('hb')) L('hb').textContent = bots.filter(b => b.district===h.district).length;
+    if (L('ht')) L('ht').textContent = h.botsToday; }
+  if (sel.kind === 'station' && L('eta2')) L('eta2').textContent = trainStatus();
+}
+
+/* ---------- actions ---------- */
+function findProp(id){ for (const h of Object.values(hubs)){ const p = h.inv.find(p => p.id === id); if (p) return p; } }
+function sendBack(it){
+  items = items.filter(i => i !== it);
+  const m = ents.find(x => x.id === it.machine);
+  if (m?.kind === 'machine'){ m.state = 'working'; m.progress = .8; m.fixing = true; m.asked = true; m.log.push({t:'You: sent back with CI log', you:true}); }
+  if (m?.kind === 'array'){ m.queue.unshift({ticket:it.ticket, title:'Fix CI: '+it.ci}); m.done--; m.log.push({t:`You: ${it.ticket} back in the queue with the CI log`, you:true}); }
+  toast(`PR #${it.pr} sent back to <b>${it.ticket}</b>. Belt is moving again`);
+  select(m ? {kind:m.kind, ref:m} : null);
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const a = b.dataset.act;
+  if (a === 'close') select(null);
+  else if (a === 'goto') select({kind:'hub', ref:hubs[b.dataset.d]}, true);
+  else if (a === 'station') select({kind:'station'}, true);
+  else if (a === 'platform') select({kind:'platform'}, true);
+  else if (a === 'speed'){ sim.speed = +b.dataset.v; ovSig = ''; }
+  else if (a === 'zoom') zoomAt(vw/2, vh/2, b.dataset.v > 0 ? 1.25 : .8);
+  else if (a === 'fit'){ fit(); camTarget = null; }
+  else if (a === 'alert') cycleAlert(b.dataset.k);
+  else if (a === 'answer'){
+    const e2 = sel?.ref, o = +b.dataset.v;
+    if (sel?.kind === 'machine' && e2.state === 'needs'){ const ans = e2.q.o[o];
+      e2.asked = true; e2.state = 'working'; e2.log.push({t:'You: '+ans, you:true}); toast(`<b>${e2.ticket}</b> carries on: ${esc(ans)}`); entSig=''; }
+    if (sel?.kind === 'array'){ const c = e2.cells.find(c => c.state === 'needs'); if (c){ const ans = c.q.o[o];
+      c.state = 'working'; e2.log.push({t:`You → ${c.t.ticket}: ${ans}`, you:true}); toast(`<b>${c.t.ticket}</b> carries on: ${esc(ans)}`); entSig=''; } } }
+  else if (a === 'open') toast('In the real app this jumps to the Claude Code session');
+  else if (a === 'archive'){ const m = sel.ref; archiveE(m, false); toast(`<b>${esc(m.ticket)}</b> archived into the chest by its hub`); select(null); }
+  else if (a === 'handoff'){ const m = sel.ref; m.state = 'handoff'; m.hoT = 2.5; m.log.push({t:'You: write a handoff, then archive', you:true}); entSig=''; }
+  else if (a === 'cleanup'){ const list = ents.filter(m => m.district===b.dataset.d && doneable(m));
+      list.forEach(m => { m.state = 'handoff'; m.hoT = rand(1.2, 3.2); m.log.push({t:'Controller: write a handoff, then archive', you:true}); });
+      toast(`${list.length} finished ${list.length>1?'entries are':'entry is'} writing handoffs`); entSig=''; }
+  else if (a === 'restore'){ const h = sel.ref, entry = h.archive.find(x => x.id === +b.dataset.id); if (entry){ cursor = {restore:entry, district:h.district}; renderHint(); } }
+  else if (a === 'mode'){ const h = sel.ref; h.mode = b.dataset.v; h.autoT = 1; ovSig=''; entSig='';
+      toast(h.mode === 'auto' ? `<b>${D[h.district].short}</b> controller now places new work itself` : `<b>${D[h.district].short}</b> controller waits for you again`); }
+  else if (a === 'cols'){ const ar = sel.ref, v = +b.dataset.v;
+      if (v > 0){ if (ar.cols >= 8) toast('Eight cells is the limit in this demo');
+        else if (!canPlace(ar.district, ar.x, ar.y, ar.cols+2, ar.h, ar)) toast('No room to grow here. Move the array first');
+        else { ar.cells.push({t:null}); ar.cols++; ar.w = ar.cols+1; } }
+      else if (ar.cols > 1){ const last = ar.cells[ar.cells.length-1];
+        if (last.t){ last.remove = true; toast('That cell is busy. It goes away after its current ticket'); }
+        else { ar.cells.pop(); ar.cols--; ar.w = ar.cols+1; } }
+      entSig=''; }
+  else if (a === 'move'){ cursor = {move:sel.ref, district:sel.ref.district}; renderHint(); }
+  else if (a === 'sendback'){ const it = items.find(i => i.id === +b.dataset.id); if (it) sendBack(it); }
+  else if (a === 'mergenow'){ if (train.state==='depot') train.next = 0; }
+  else if (a === 'legend'){ const L = $('#legend'), narrow = innerWidth <= 860;
+      if (narrow) L.classList.toggle('force'); else { L.hidden = !L.hidden; $('#legendOpen').hidden = !L.hidden; } }
+  else if (a === 'inv'){ invOpen = !invOpen; hbSig = ''; renderInv(); }
+  else if (a === 'pin'){ const id = +b.dataset.id, i = pins.indexOf(null); if (i < 0) toast('The hotbar is full. Drag over a slot to replace it'); else { pins[i] = id; toast(`Pinned to slot ${i < 9 ? i+1 : 0}`); } hbSig = ''; invSig = ''; }
+  else if (a === 'ovtoggle') $('#overview').classList.toggle('collapsed');
+});
+
+/* ---------- drag from slots ---------- */
+document.addEventListener('pointerdown', e => {
+  const b = e.target.closest('.slot[data-act=pickp]'); if (!b) return;
+  e.preventDefault();
+  const p = findProp(+b.dataset.id); if (!p) return;
+  if (cursor?.prop === p){ cursor = null; slotDrag = null; }
+  else { cursor = {prop:p, district:p.district}; slotDrag = {x:e.clientX, y:e.clientY, moved:false}; }
+  hbSig = ''; entSig = ''; renderHint();
+});
+addEventListener('pointermove', e => {
+  mouse.sx = e.clientX; mouse.sy = e.clientY; mouse.type = e.pointerType;
+  mouse.in = document.elementFromPoint(e.clientX, e.clientY) === cv;
+  if (slotDrag && Math.hypot(e.clientX-slotDrag.x, e.clientY-slotDrag.y) > 6) slotDrag.moved = true;
+});
+addEventListener('pointerup', e => {
+  if (!slotDrag) return;
+  const sd = slotDrag; slotDrag = null;
+  const el = document.elementFromPoint(e.clientX, e.clientY), hb = el?.closest('#hotbar [data-hb]');
+  if (sd.moved && hb && cursor?.prop){
+    const id = cursor.prop.id, i = +hb.dataset.hb, from = pins.indexOf(id);
+    if (from >= 0) pins[from] = pins[i]; pins[i] = id;
+    cursor = null; hbSig = ''; invSig = ''; renderHint(); toast(`Pinned to slot ${i < 9 ? i+1 : 0}`); return;
+  }
+  if (sd.moved && cursor && el === cv) place(s2w(e.clientX, e.clientY));
+});
+
+/* ---------- canvas pointer ---------- */
+function zoomAt(sx, sy, f){
+  const w = s2w(sx, sy); cam.z = Math.max(.25, Math.min(2.6, cam.z*f));
+  cam.x = w.x - (sx - vw/2)/S(); cam.y = w.y - (sy - vh/2)/S(); camTarget = null;
+}
+cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY*.0015)); }, {passive:false});
+cv.addEventListener('pointerdown', e => {
+  if (e.button === 2){ cursor = null; renderHint(); hbSig=''; return; }
+  const w = s2w(e.clientX, e.clientY), h = cursor ? null : hitTest(w);
+  down = {x:e.clientX, y:e.clientY, cx:cam.x, cy:cam.y, moved:false, ent: h && (h.kind === 'machine' || h.kind === 'array') ? h.ref : null};
+  cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener('pointermove', e => {
+  if (down){ const dx = e.clientX-down.x, dy = e.clientY-down.y;
+    if (!down.moved && Math.hypot(dx,dy) > 5){ down.moved = true;
+      if (down.ent){ cursor = {move:down.ent, district:down.ent.district, drag:true}; renderHint(); }
+      else cv.classList.add('dragging'); }
+    if (down.moved && !down.ent){ cam.x = down.cx - dx/S(); cam.y = down.cy - dy/S(); camTarget = null; } }
+  updateTip();
+});
+cv.addEventListener('pointerup', e => {
+  cv.classList.remove('dragging');
+  const w = s2w(e.clientX, e.clientY);
+  if (down && down.ent && down.moved && cursor?.drag){
+    const fp = footprint(cursor), gx = Math.round(w.x - fp.w/2), gy = Math.round(w.y - fp.h/2);
+    if (canPlace(cursor.district, gx, gy, fp.w, fp.h, cursor.move)){ cursor.move.x = gx; cursor.move.y = gy; entSig = ''; }
+    else toast('No room there. It went back to its spot');
+    cursor = null; renderHint();
+  } else if (down && !down.moved) clickAt(w);
+  down = null;
+});
+cv.addEventListener('pointerleave', () => { $('#tip').hidden = true; });
+cv.addEventListener('contextmenu', e => e.preventDefault());
+function place(w){
+  const fp = footprint(cursor), gx = Math.round(w.x - fp.w/2), gy = Math.round(w.y - fp.h/2);
+  if (!canPlace(cursor.district, gx, gy, fp.w, fp.h, cursor.move)){ toast(`Drop it on a free spot inside <b>${D[cursor.district].short}</b>`); return; }
+  if (cursor.prop){ const e = placeProp(cursor.prop, gx, gy); cursor = null; select({kind:e.kind, ref:e}); }
+  else if (cursor.restore){
+    const h = hubs[cursor.district], en = cursor.restore; h.archive = h.archive.filter(x => x !== en);
+    const m = newMachine(cursor.district, gx, gy, en, {state:'done', progress:1, pr:en.pr, askAt:null, tokens:0, target:'main', stack:1});
+    m.log.push({t:'Restored from the chest' + (en.handoff ? ', handoff attached' : '')});
+    toast(`<b>${m.ticket}</b> is back on the map`); cursor = null; select({kind:'machine', ref:m});
+  } else { cursor.move.x = gx; cursor.move.y = gy; cursor = null; entSig = ''; }
+  hbSig = ''; renderHint();
+}
+function clickAt(w){ if (cursor){ place(w); return; } select(hitTest(w)); }
+const EXPLAIN = {
+  machine:'A session. Click for details, drag to move it.',
+  array:'A batch array: one queue, several sessions in parallel.',
+  hub:'Controller agent. Drag a proposal from it into the area to approve it.',
+  chest:'Archived sessions and their handoffs. Click to restore one.',
+  station:'Finished PRs with green CI wait here for the merge train.',
+  silo:'Pushes to the remote. Each launch is one push.',
+  platform:'The remote. Squares are open PRs; hexagons are branches.',
+  item:'A PR on its way to merge. Ring colour is the target branch.',
+  packet:'A message between agents. It also lands in both logs.',
+};
+function updateTip(){
+  const tip = $('#tip');
+  if (mouse.type !== 'mouse' || down?.moved || cursor){ tip.hidden = true; return; }
+  const h = hitTest(s2w(mouse.sx, mouse.sy), true);
+  if (!h){ tip.hidden = true; return; }
+  let a, b;
+  if (h.kind==='machine'){ const m = h.ref; a = `${m.mono} · ${m.ticket} (${tidText(m)})`; b = {working: m.fixing?'Fixing CI':'Working', needs:'Waiting on you', done:'Done', handoff:'Writing handoff'}[m.state] + ` · targets ${TGT[m.target].label}${m.queue.length ? ` · ${m.queue.length} more in chain` : ''}`; }
+  else if (h.kind==='array'){ const ar = h.ref; a = `${ar.mono} · ${ar.ticket} (${tidText(ar)})`; b = `${ar.done} of ${ar.total} done · ${ar.queue.length} queued · ${ar.cols} in parallel`; }
+  else if (h.kind==='hub'){ a = `${D[h.ref.district].name} controller`; b = `${h.ref.mode === 'auto' ? 'Auto' : 'Manual'} · ${h.ref.inv.length} proposals · ${bots.filter(x=>x.district===h.ref.district).length} bots out`; }
+  else if (h.kind==='chest'){ a = `${D[h.ref.district].short} archive`; b = `${h.ref.archive.length} archived sessions`; }
+  else if (h.kind==='station'){ a = 'Merge station'; b = `${buffer.length} waiting · train ${trainStatus()}`; }
+  else if (h.kind==='silo'){ a = 'Rocket silo'; b = rocket.state === 'idle' ? `Rocket on the pad · ${silo.cargo.length} waiting` : 'Rocket in flight'; }
+  else if (h.kind==='platform'){ a = 'Forgejo'; b = `${cells.length} open PRs · ${cellCount('review')} waiting for review`; }
+  else if (h.kind==='packet'){ const p = h.ref; a = `${nameOf(p.from)} → ${nameOf(p.to)}`; b = p.text; }
+  else { a = `${prLabel(h.ref)} · ${h.ref.ticket}`; b = h.ref.state==='jam' ? 'CI failed: '+h.ref.ci : `CI green · to ${TGT[h.ref.target].label}`; }
+  tip.innerHTML = `<b>${esc(a)}</b><span class="s">${esc(b)}</span><span class="s" style="font-style:italic;opacity:.8">${esc(EXPLAIN[h.kind])}</span>`; tip.hidden = false;
+  const tx = Math.min(mouse.sx + 16, vw - tip.offsetWidth - 8), ty = Math.min(mouse.sy + 18, vh - tip.offsetHeight - 8);
+  tip.style.left = tx+'px'; tip.style.top = ty+'px';
+}
+addEventListener('keydown', e => {
+  if (e.target.closest('input,textarea')) return;
+  if (e.key === 'Alt'){ e.preventDefault(); altMode = true; return; }
+  if (e.key === 'e' || e.key === 'E'){ invOpen = !invOpen; hbSig = ''; renderInv(); return; }
+  if (e.key === 'Escape' || e.key === 'q'){ if (cursor && !cursor.drag){ cursor = null; hbSig=''; renderHint(); } else if (invOpen){ invOpen = false; hbSig=''; renderInv(); } else select(null); }
+  else if (e.key === ' '){ e.preventDefault(); sim.speed = sim.speed ? 0 : 1; ovSig=''; }
+  else if (/^[0-9]$/.test(e.key)){ const p = hotbarSlots()[e.key==='0' ? 9 : +e.key-1]; if (p){ cursor = cursor?.prop === p ? null : {prop:p, district:p.district}; hbSig=''; entSig=''; renderHint(); } }
+});
+
+/* ---------- loop ---------- */
+resize(); fit();
+if (innerWidth <= 860) $('#legendOpen').hidden = false;
+if (innerWidth <= 760) $('#overview').classList.add('collapsed');
+addEventListener('resize', resize);
+addEventListener('keyup', e => { if (e.key === 'Alt') altMode = false; });
+addEventListener('blur', () => { altMode = false; });
+let last = performance.now(), uiT = 0;
+function frame(now){
+  const dt = Math.min(.05, (now - last)/1000); last = now;
+  if (sim.speed) update(dt*sim.speed);
+  if (camTarget){ const k = Math.min(1, dt*6); cam.x += (camTarget.x-cam.x)*k; cam.y += (camTarget.y-cam.y)*k;
+    if (Math.hypot(camTarget.x-cam.x, camTarget.y-cam.y) < .02) camTarget = null; }
+  draw();
+  const tag = $('#ctag');
+  if (cursor && !(cursor.drag) && (mouse.in || slotDrag)){
+    const e = cursor.prop || cursor.restore || cursor.move, n = cursor.prop && propTag(cursor.prop);
+    const html = `${monoChip(e)}<span>${esc(e.ticket)}</span>${n ? `<span class="muted">${esc(n)}</span>` : ''}`;
+    if (tag.dataset.k !== html){ tag.innerHTML = html; tag.dataset.k = html; }
+    tag.hidden = false; tag.style.left = (mouse.sx + 18) + 'px'; tag.style.top = (mouse.sy + 14) + 'px';
+  } else if (cursor?.drag && mouse.in){ const e = cursor.move, html = `${monoChip(e)}<span>${esc(e.ticket)}</span>`;
+    if (tag.dataset.k !== html){ tag.innerHTML = html; tag.dataset.k = html; } tag.hidden = false; tag.style.left = (mouse.sx + 18) + 'px'; tag.style.top = (mouse.sy + 14) + 'px';
+  } else tag.hidden = true;
+  uiT += dt; if (uiT > .2){ uiT = 0; renderOverview(); renderAlerts(); renderHotbar(); renderEntity(); renderInv(); }
+  requestAnimationFrame(frame);
+}
+renderOverview(); renderAlerts(); renderHotbar(); renderHint();
+requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>

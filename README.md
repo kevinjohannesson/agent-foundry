@@ -7,7 +7,7 @@ The game is only a renderer. Underneath is a local core that turns Claude Code h
 append-only event log and a projected state; any renderer (this factory, a plain table, something 3D later)
 reads that state and sends back intents.
 
-Mockup: https://claude.ai/artifact/EwWyPRH6eNjjRuTvq8d9bt · Plan: [docs/PLAN.md](docs/PLAN.md) · First step: [docs/SPIKE.md](docs/SPIKE.md)
+Mockup: https://claude.ai/artifact/EwWyPRH6eNjjRuTvq8d9bt (source: [docs/mockup/agent-foundry.html](docs/mockup/agent-foundry.html), open it in a browser) · Plan: [docs/PLAN.md](docs/PLAN.md) · First step: [docs/SPIKE.md](docs/SPIKE.md)
 
 ## Layout
 | Path | What |
